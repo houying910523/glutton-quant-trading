@@ -1,0 +1,46 @@
+from __future__ import annotations
+
+from modules.repositories.models import TradingCalendarRecord
+from modules.datasource.shared import format_date
+from modules.repositories.base import SQLiteRepository
+
+
+class TradingCalendarRepository(SQLiteRepository):
+    def upsert_many(self, records: list[TradingCalendarRecord]) -> None:
+        payload = [
+            (
+                record.market,
+                format_date(record.trade_date),
+                int(record.is_open),
+                record.created_at.strftime("%Y-%m-%d %H:%M:%S"),
+                record.updated_at.strftime("%Y-%m-%d %H:%M:%S"),
+            )
+            for record in records
+        ]
+        if not payload:
+            return
+        self._connection.executemany(
+            """
+            INSERT INTO trading_calendar (
+                market, trade_date, is_open, created_at, updated_at
+            ) VALUES (?, ?, ?, ?, ?)
+            ON CONFLICT(market, trade_date) DO UPDATE SET
+                is_open = excluded.is_open,
+                updated_at = excluded.updated_at
+            """,
+            payload,
+        )
+
+    def list_open_trade_dates(self, *, start_date: str, end_date: str) -> list[str]:
+        rows = self._connection.execute(
+            """
+            SELECT trade_date
+            FROM trading_calendar
+            WHERE market = 'CN'
+              AND is_open = 1
+              AND trade_date BETWEEN ? AND ?
+            ORDER BY trade_date ASC
+            """,
+            (start_date, end_date),
+        ).fetchall()
+        return [row["trade_date"] for row in rows]
