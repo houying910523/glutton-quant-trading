@@ -84,3 +84,38 @@ class StockRepository(SQLiteRepository):
             )
             for row in rows
         ]
+
+    def list_active_sync_targets(
+        self,
+        *,
+        stock_ids: list[int] | None = None,
+        symbols: list[str] | None = None,
+    ) -> list[tuple[int, str, str | None]]:
+        conditions = ["status = 'active'"]
+        parameters: list[object] = []
+
+        if stock_ids:
+            conditions.append(f"id IN ({','.join('?' for _ in stock_ids)})")
+            parameters.extend(stock_ids)
+
+        if symbols:
+            conditions.append(f"symbol IN ({','.join('?' for _ in symbols)})")
+            parameters.extend(symbols)
+
+        rows = self._connection.execute(
+            f"""
+            SELECT id, symbol, listed_at
+            FROM stock
+            WHERE {" AND ".join(conditions)}
+            ORDER BY exchange ASC, symbol ASC
+            """,
+            parameters,
+        ).fetchall()
+        return [
+            (
+                row["id"],
+                row["symbol"],
+                row["listed_at"],
+            )
+            for row in rows
+        ]

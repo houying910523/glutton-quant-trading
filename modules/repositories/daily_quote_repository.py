@@ -59,6 +59,38 @@ class DailyQuoteRepository(SQLiteRepository):
         ).fetchall()
         return {row["trade_date"] for row in rows}
 
+    def get_latest_trade_date(self, *, stock_id: int) -> str | None:
+        row = self._connection.execute(
+            """
+            SELECT MAX(trade_date) AS trade_date
+            FROM daily_quote
+            WHERE stock_id = ?
+            """,
+            (stock_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return row["trade_date"]
+
+    def list_trade_dates_by_stock(
+        self,
+        *,
+        stock_id: int,
+        start_date: str,
+        end_date: str,
+    ) -> list[str]:
+        rows = self._connection.execute(
+            """
+            SELECT trade_date
+            FROM daily_quote
+            WHERE stock_id = ?
+              AND trade_date BETWEEN ? AND ?
+            ORDER BY trade_date ASC
+            """,
+            (stock_id, start_date, end_date),
+        ).fetchall()
+        return [row["trade_date"] for row in rows]
+
     def calculate_coverage_threshold(
         self,
         *,

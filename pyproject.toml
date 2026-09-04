@@ -5,6 +5,7 @@ description = "首版 A 股数据接入与标准化存储实现"
 requires-python = ">=3.12"
 dependencies = [
     "akshare>=1.18.94,<2",
+    "pandas-stubs==3.0.5.260730",
     "polars>=1.8.2,<2",
     "pydantic>=2.9.2,<3",
     "typer>=0.12.5,<1",

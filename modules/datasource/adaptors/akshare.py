@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-import contextlib
-import io
 import time
 from abc import ABC, abstractmethod
 from datetime import date
@@ -79,11 +77,11 @@ class BaseAkshareAdapterMixin[T](ABC):
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                with (
-                    contextlib.redirect_stdout(io.StringIO()),
-                    contextlib.redirect_stderr(io.StringIO()),
-                ):
-                    frame = function()
+                # with (
+                #     contextlib.redirect_stdout(io.StringIO()),
+                #     contextlib.redirect_stderr(io.StringIO()),
+                # ):
+                frame = function()
                 if frame is None:
                     return []
                 return list(frame.to_dict(orient="records"))
@@ -298,11 +296,11 @@ class AkshareDailyQuoteAdapter(
         return records
 
     def convert_to_record(self, raw: dict[str, Any]) -> T | None:
-        trade_date = parse_date(raw.get("trade_date"))
-        exchange = raw.get("exchange")
+        trade_date = parse_date(raw.get("date"))
+        exchange = raw.get("_exchange")
         now = now_shanghai()
         if trade_date is None:
-            raise ValueError("trade_date is required")
+            raise ValueError("date is required")
         if exchange not in {"SSE", "SZSE"}:
             raise ValueError("unsupported exchange")
         return DailyQuoteRecord(
@@ -313,8 +311,8 @@ class AkshareDailyQuoteAdapter(
             high=_to_cents(raw.get("high")),
             low=_to_cents(raw.get("low")),
             close=_to_cents(raw.get("close")),
-            volume=_to_shares(raw.get("volume_raw")),
-            turnover=_to_turnover_cents(raw.get("turnover_raw")),
+            volume=_to_shares(raw.get("volume")),
+            turnover=_to_turnover_cents(raw.get("turnover")),
             ingestion_batch_id=0,
             ingested_at=now,
             updated_at=now,

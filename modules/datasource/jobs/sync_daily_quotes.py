@@ -13,10 +13,8 @@ app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 
 @app.command()
 def main(
-    start_date: str = typer.Option(..., "--start-date"),
-    end_date: str = typer.Option(..., "--end-date"),
-    symbols: str | None = typer.Option(None, "--symbols"),
-    refresh: bool = typer.Option(False, "--refresh"),
+    stock_id: int | None = typer.Option(None, "--stock-id"),
+    symbol: str | None = typer.Option(None, "--symbol"),
     adapter: AdapterType = typer.Option(
         "akshare", "--adapter", help="选择数据源 adapter"
     ),
@@ -25,10 +23,9 @@ def main(
     pipeline = DailyQuotePipeline(runtime.database, runtime.raw_store)
     result = pipeline.run(
         adaptor_type=adapter,
-        start_date=start_date,
-        end_date=end_date,
-        symbols=symbols,
-        refresh=refresh,
+        sync_mode="incremental",
+        stock_id=stock_id,
+        symbol=symbol,
     )
     typer.echo(
         json.dumps(

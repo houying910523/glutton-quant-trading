@@ -1,30 +1,43 @@
 from __future__ import annotations
 
+import sys
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from dataclasses import dataclass
+from datetime import timedelta
 from typing import Any, Generator
 
-
 from modules.datasource.adaptors import AdapterType
-from modules.repositories import RepositorySession
-from modules.repositories.models import (
-    DailyQuoteRecord,
-    IngestionBatchRecord,
-)
-from modules.datasource.pipeline.services.base import BasePipeline, PipelineOutcome
 from modules.datasource.adaptors.base import StockDailyQuoteFetcher
+from modules.datasource.pipeline.services.base import BasePipeline, PipelineOutcome
+from modules.datasource.shared import now_shanghai, parse_date
+from modules.repositories import RepositorySession
+from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
+
+DEFAULT_HISTORY_START_DATE = "1991-01-01"
+
+
+@dataclass(frozen=True)
+class StockSyncTarget:
+    stock_id: int
+    symbol: str
+    listed_at: str | None
 
 
 @dataclass
 class Task:
     stock_id: int
     symbol: str
-    start_date: str  # yyyyMMdd
-    end_date: str  # yyyyMMdd
+    history_start_date: str
+    start_date: str
+    end_date: str
 
 
 class DailyQuotePipeline(BasePipeline):
     resource_type = "daily_quote"
+
+    def create_running_batch(self, *, source_name: str, **kwargs):
+        kwargs.setdefault("sync_mode", "incremental")
+        return super().create_running_batch(source_name=source_name, **kwargs)
 
     def _process(
         self,
@@ -36,82 +49,78 @@ class DailyQuotePipeline(BasePipeline):
         from modules.datasource.adaptors.base import create_stock_daily_quote_fetcher
 
         stock_daily_quote_fetcher = create_stock_daily_quote_fetcher(adaptor_type)
-        active_stocks = self.active_stock_symbols()
-        symbol_to_id_mapping = {tp[1]: tp[0] for tp in active_stocks}
-        symbols = kwargs.get("symbols") or list(symbol_to_id_mapping.keys())
-        start_date = self.required("start_date", kwargs)
-        end_date = self.required("end_date", kwargs)
-        refresh = kwargs.get("refresh", False)
+        target_stocks = self._select_target_stocks(repositories, kwargs)
+        tasks = self._incremental_daily_quote(repositories, target_stocks)
 
-        try:
-            if refresh:
-                # 全量数据刷新
-                tasks = self._refresh_all_daily_quote(
-                    symbols, start_date, end_date, symbol_to_id_mapping
-                )
-            else:
-                # 增量补充
-                tasks = self._incremental_daily_quote(
-                    symbols, start_date, end_date, symbol_to_id_mapping
-                )
+        total = 0
+        for task, records in self._sequence_process_daily_quote(
+            stock_daily_quote_fetcher, tasks, batch
+        ):
+            self._upsert_records(repositories, records)
+            total += len(records)
 
-            total = 0
-            for daily_quote_list in self._parallel_process_daily_quote(
-                stock_daily_quote_fetcher, tasks, batch
-            ):
-                repositories.daily_quote.upsert_many(daily_quote_list)
-                total += len(daily_quote_list)
-
-            return PipelineOutcome(
-                status="success",
-                raw_count=total,
-                loaded_count=total,
-                valid_count=total,
-                rejected_count=0,
-            )
-        except Exception as e:
-            raise e
-
-    def _refresh_all_daily_quote(
-        self,
-        symbols: list[str],
-        start_date: str,
-        end_date: str,
-        symbol_to_id_mapping: dict[str, int],
-    ) -> list[Task]:
-        tasks = [
-            Task(
-                stock_id=symbol_to_id_mapping[symbol],
-                symbol=symbol,
-                start_date=start_date,
-                end_date=end_date,
-            )
-            for symbol in symbols
-        ]
-        return tasks
+        return PipelineOutcome(
+            status="success",
+            raw_count=total,
+            loaded_count=total,
+            valid_count=total,
+            rejected_count=0,
+        )
 
     def _incremental_daily_quote(
         self,
-        symbols: list[str],
-        start_date: str,
-        end_date: str,
-        symbol_to_id_mapping: dict[str, int],
+        repositories: RepositorySession,
+        target_stocks: list[StockSyncTarget],
     ) -> list[Task]:
-        pass
+        today = now_shanghai().date().isoformat()
+        tasks: list[Task] = []
+        for stock in target_stocks:
+            history_start_date = stock.listed_at or DEFAULT_HISTORY_START_DATE
+            latest_trade_date = repositories.daily_quote.get_latest_trade_date(
+                stock_id=stock.stock_id
+            )
+            if latest_trade_date:
+                self._ensure_existing_history_complete(
+                    repositories,
+                    stock=stock,
+                    history_start_date=history_start_date,
+                    latest_trade_date=latest_trade_date,
+                )
+                next_date = parse_date(latest_trade_date)
+                if next_date is None:
+                    raise ValueError(
+                        f"invalid latest trade date for {stock.symbol}: {latest_trade_date}"
+                    )
+                start_date = (next_date + timedelta(days=1)).isoformat()
+            else:
+                start_date = history_start_date
+
+            expected_open_dates = repositories.trading_calendar.list_open_trade_dates(
+                start_date=start_date,
+                end_date=today,
+            )
+            if not expected_open_dates:
+                continue
+
+            tasks.append(
+                Task(
+                    stock_id=stock.stock_id,
+                    symbol=stock.symbol,
+                    history_start_date=history_start_date,
+                    start_date=start_date,
+                    end_date=expected_open_dates[-1],
+                )
+            )
+        return tasks
 
     @classmethod
-    def _parallel_process_daily_quote(
+    def _sequence_process_daily_quote(
         cls,
         stock_daily_quote_fetcher: StockDailyQuoteFetcher,
         tasks: list[Task],
         batch: IngestionBatchRecord,
-    ) -> Generator[list[DailyQuoteRecord], None, None]:
-
-        from queue import Queue
-
-        queue = Queue(maxsize=len(tasks))
-
-        def fetch_and_write(task: Task) -> None:
+    ):
+        for task in tasks:
             records = stock_daily_quote_fetcher.fetch(
                 task.symbol,
                 task.start_date,
@@ -119,18 +128,51 @@ class DailyQuotePipeline(BasePipeline):
                 batch_id=batch.id,
                 stock_id=task.stock_id,
             )
-            queue.put(records, block=True)
+            yield task, records
+
+    @classmethod
+    def _parallel_process_daily_quote(
+        cls,
+        stock_daily_quote_fetcher: StockDailyQuoteFetcher,
+        tasks: list[Task],
+        batch: IngestionBatchRecord,
+    ) -> Generator[tuple[Task, list[DailyQuoteRecord]], None, None]:
+        if not tasks:
+            return
+
+        from queue import Queue
+
+        sentinel = object()
+        queue = Queue(maxsize=len(tasks) + 1)
+
+        def fetch_and_write(task: Task) -> None:
+            sys.stderr.write(f"task {task.stock_id} {task.symbol} start\n")
+            records = stock_daily_quote_fetcher.fetch(
+                task.symbol,
+                task.start_date,
+                task.end_date,
+                batch_id=batch.id,
+                stock_id=task.stock_id,
+            )
+            sys.stderr.write(f"task {task.stock_id} {task.symbol} fetched\n")
+            queue.put((task, records), block=True)
 
         def async_submit_task() -> None:
-            with ThreadPoolExecutor(max_workers=min(8, len(tasks))) as executor:
-                future_list = []
-                for task in tasks:
-                    future = executor.submit(fetch_and_write, task)
-                    future_list.append(future)
+            try:
+                with ThreadPoolExecutor(max_workers=min(8, len(tasks))) as executor:
+                    future_list = []
+                    for task in tasks:
+                        future = executor.submit(fetch_and_write, task)
+                        future_list.append(future)
 
-                for future in as_completed(future_list):
-                    future.result()
-            queue.put("done")
+                    sys.stderr.write("waiting for all task done...\n")
+                    for future in as_completed(future_list):
+                        future.result()
+            except Exception as exc:
+                queue.put(exc, block=True)
+            finally:
+                queue.put(sentinel, block=True)
+                sys.stderr.write("all task done.\n")
 
         import threading
 
@@ -138,19 +180,12 @@ class DailyQuotePipeline(BasePipeline):
 
         while True:
             obj = queue.get()
-            if isinstance(obj, str) and obj == "done":
+            if obj is sentinel:
                 break
+            if isinstance(obj, Exception):
+                raise obj
+            sys.stderr.write(f"get records {len(obj[1])}")
             yield obj
-
-    @classmethod
-    def required(cls, key: str, kwargs: dict[str, Any]) -> Any:
-        if key not in kwargs or kwargs.get(key) is None:
-            raise Exception()
-        return kwargs[key]
-
-    def active_stock_symbols(self) -> list[tuple[int, str]]:
-        with RepositorySession(self._database) as repositories:
-            return repositories.stock.list_active_symbols()
 
     def _upsert_records(
         self,
@@ -158,3 +193,107 @@ class DailyQuotePipeline(BasePipeline):
         records: list[DailyQuoteRecord],
     ) -> None:
         repositories.daily_quote.upsert_many(records)
+
+    def _select_target_stocks(
+        self,
+        repositories: RepositorySession,
+        kwargs: dict[str, Any],
+    ) -> list[StockSyncTarget]:
+        stock_ids = set(self._normalize_int_filters(kwargs, "stock_id", "stock_ids"))
+        symbols = set(self._normalize_str_filters(kwargs, "symbol"))
+        targets = [
+            StockSyncTarget(
+                stock_id=stock_id,
+                symbol=symbol,
+                listed_at=listed_at,
+            )
+            for stock_id, symbol, listed_at in repositories.stock.list_active_sync_targets(
+                stock_ids=sorted(stock_ids) or None,
+                symbols=sorted(symbols) or None,
+            )
+        ]
+        if not targets:
+            raise ValueError("no active stock matched the given stock_id/symbol filter")
+        return targets
+
+    def _ensure_existing_history_complete(
+        self,
+        repositories: RepositorySession,
+        *,
+        stock: StockSyncTarget,
+        history_start_date: str,
+        latest_trade_date: str,
+    ) -> None:
+        expected_trade_dates = repositories.trading_calendar.list_open_trade_dates(
+            start_date=history_start_date,
+            end_date=latest_trade_date,
+        )
+        loaded_trade_dates = repositories.daily_quote.list_trade_dates_by_stock(
+            stock_id=stock.stock_id,
+            start_date=history_start_date,
+            end_date=latest_trade_date,
+        )
+        if expected_trade_dates == loaded_trade_dates:
+            return
+
+        missing_dates = sorted(set(expected_trade_dates) - set(loaded_trade_dates))
+        unexpected_dates = sorted(set(loaded_trade_dates) - set(expected_trade_dates))
+        detail = []
+        if missing_dates:
+            detail.append(f"missing={','.join(missing_dates[:5])}")
+        if unexpected_dates:
+            detail.append(f"unexpected={','.join(unexpected_dates[:5])}")
+        message = ", ".join(detail) or "coverage mismatch"
+        raise ValueError(
+            f"historical daily quotes for {stock.symbol} are incomplete before incremental sync: {message}"
+        )
+
+    @classmethod
+    def _normalize_str_filters(
+        cls,
+        kwargs: dict[str, Any],
+        *keys: str,
+    ) -> list[str]:
+        values: list[str] = []
+        for key in keys:
+            values.extend(cls._coerce_str_values(kwargs.get(key)))
+        return values
+
+    @classmethod
+    def _normalize_int_filters(
+        cls,
+        kwargs: dict[str, Any],
+        *keys: str,
+    ) -> list[int]:
+        values: list[int] = []
+        for key in keys:
+            values.extend(cls._coerce_int_values(kwargs.get(key)))
+        return values
+
+    @classmethod
+    def _coerce_str_values(cls, value: Any) -> list[str]:
+        if value is None:
+            return []
+        if isinstance(value, str):
+            return [item.strip() for item in value.split(",") if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            values: list[str] = []
+            for item in value:
+                values.extend(cls._coerce_str_values(item))
+            return values
+        return [str(value).strip()]
+
+    @classmethod
+    def _coerce_int_values(cls, value: Any) -> list[int]:
+        if value is None:
+            return []
+        if isinstance(value, int):
+            return [value]
+        if isinstance(value, str):
+            return [int(item.strip()) for item in value.split(",") if item.strip()]
+        if isinstance(value, (list, tuple, set)):
+            values: list[int] = []
+            for item in value:
+                values.extend(cls._coerce_int_values(item))
+            return values
+        raise ValueError(f"unsupported stock id filter type: {type(value).__name__}")
