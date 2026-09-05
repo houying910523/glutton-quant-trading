@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import contextlib
+import io
 import time
 from abc import ABC, abstractmethod
 from datetime import date
@@ -77,11 +79,11 @@ class BaseAkshareAdapterMixin[T](ABC):
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                # with (
-                #     contextlib.redirect_stdout(io.StringIO()),
-                #     contextlib.redirect_stderr(io.StringIO()),
-                # ):
-                frame = function()
+                with (
+                    contextlib.redirect_stdout(io.StringIO()),
+                    contextlib.redirect_stderr(io.StringIO()),
+                ):
+                    frame = function()
                 if frame is None:
                     return []
                 return list(frame.to_dict(orient="records"))
@@ -303,20 +305,50 @@ class AkshareDailyQuoteAdapter(
             raise ValueError("date is required")
         if exchange not in {"SSE", "SZSE"}:
             raise ValueError("unsupported exchange")
+        open = _to_cents(raw.get("open"))
+        high = _to_cents(raw.get("high"))
+        low = _to_cents(raw.get("low"))
+        close = _to_cents(raw.get("close"))
+        volume = _to_shares(raw.get("volume"))
+        turnover = _to_turnover_cents(raw.get("turnover"))
+        if not self.validate_ohlc(open, high, low, close, volume, turnover):
+            return None
         return DailyQuoteRecord(
             id=None,
             stock_id=0,
             trade_date=trade_date,
-            open=_to_cents(raw.get("open")),
-            high=_to_cents(raw.get("high")),
-            low=_to_cents(raw.get("low")),
-            close=_to_cents(raw.get("close")),
-            volume=_to_shares(raw.get("volume")),
-            turnover=_to_turnover_cents(raw.get("turnover")),
+            open=open,
+            high=high,
+            low=low,
+            close=close,
+            volume=volume,
+            turnover=turnover,
             ingestion_batch_id=0,
             ingested_at=now,
             updated_at=now,
         )
+
+    @classmethod
+    def validate_ohlc(
+        cls,
+        open: int,
+        high: int,
+        low: int,
+        close: int,
+        volume: int,
+        turnover: int | None = None,
+    ) -> bool:
+        if open <= 0 or high <= 0 or low <= 0 or close <= 0:
+            return False
+        if high < open or high < close or high < low:
+            return False
+        if low > open or low > close:
+            return False
+        if volume < 0:
+            return False
+        if turnover is not None and turnover < 0:
+            return False
+        return True
 
     @classmethod
     def _to_cents(cls, value: Any) -> int:

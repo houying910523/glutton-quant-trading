@@ -43,3 +43,7 @@ class RepositorySession:
                     self._connection.rollback()
         finally:
             self._connection.close()
+
+    def commit(self) -> None:
+        if self._transactional:
+            self._connection.commit()

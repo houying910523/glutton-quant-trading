@@ -65,9 +65,9 @@ class BasePipeline:
             with RepositorySession(self._database, transactional=True) as repositories:
                 outcome = self._process(repositories, batch, adaptor_type, **kwargs)
             finished_at = format_timestamp()
-            with RepositorySession(self._database, transactional=True) as repositories:
+            with repositories as session:
                 self._persist_outcome(
-                    repositories,
+                    session,
                     batch=batch,
                     outcome=outcome,
                     finished_at=finished_at,

@@ -7,7 +7,6 @@ from datetime import timedelta
 from typing import Any, Generator
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.adaptors.base import StockDailyQuoteFetcher
 from modules.datasource.pipeline.services.base import BasePipeline, PipelineOutcome
 from modules.datasource.shared import now_shanghai, parse_date
 from modules.repositories import RepositorySession
@@ -46,15 +45,12 @@ class DailyQuotePipeline(BasePipeline):
         adaptor_type: AdapterType,
         **kwargs: Any,
     ) -> PipelineOutcome:
-        from modules.datasource.adaptors.base import create_stock_daily_quote_fetcher
-
-        stock_daily_quote_fetcher = create_stock_daily_quote_fetcher(adaptor_type)
         target_stocks = self._select_target_stocks(repositories, kwargs)
         tasks = self._incremental_daily_quote(repositories, target_stocks)
 
         total = 0
         for task, records in self._sequence_process_daily_quote(
-            stock_daily_quote_fetcher, tasks, batch
+            adaptor_type, tasks, batch
         ):
             self._upsert_records(repositories, records)
             total += len(records)
@@ -80,12 +76,6 @@ class DailyQuotePipeline(BasePipeline):
                 stock_id=stock.stock_id
             )
             if latest_trade_date:
-                self._ensure_existing_history_complete(
-                    repositories,
-                    stock=stock,
-                    history_start_date=history_start_date,
-                    latest_trade_date=latest_trade_date,
-                )
                 next_date = parse_date(latest_trade_date)
                 if next_date is None:
                     raise ValueError(
@@ -116,11 +106,24 @@ class DailyQuotePipeline(BasePipeline):
     @classmethod
     def _sequence_process_daily_quote(
         cls,
-        stock_daily_quote_fetcher: StockDailyQuoteFetcher,
+        adaptor_type: AdapterType,
         tasks: list[Task],
         batch: IngestionBatchRecord,
     ):
-        for task in tasks:
+        from modules.datasource.adaptors.base import create_stock_daily_quote_fetcher
+
+        stock_daily_quote_fetcher = create_stock_daily_quote_fetcher(adaptor_type)
+
+        from tqdm import tqdm
+
+        for task in tqdm(
+            tasks,
+            ncols=100,
+            desc="Fetching",
+            total=len(tasks),
+            leave=False,
+            unit="stock",
+        ):
             records = stock_daily_quote_fetcher.fetch(
                 task.symbol,
                 task.start_date,
@@ -133,7 +136,7 @@ class DailyQuotePipeline(BasePipeline):
     @classmethod
     def _parallel_process_daily_quote(
         cls,
-        stock_daily_quote_fetcher: StockDailyQuoteFetcher,
+        adaptor_type: AdapterType,
         tasks: list[Task],
         batch: IngestionBatchRecord,
     ) -> Generator[tuple[Task, list[DailyQuoteRecord]], None, None]:
@@ -145,8 +148,11 @@ class DailyQuotePipeline(BasePipeline):
         sentinel = object()
         queue = Queue(maxsize=len(tasks) + 1)
 
+        from modules.datasource.adaptors.base import create_stock_daily_quote_fetcher
+
         def fetch_and_write(task: Task) -> None:
             sys.stderr.write(f"task {task.stock_id} {task.symbol} start\n")
+            stock_daily_quote_fetcher = create_stock_daily_quote_fetcher(adaptor_type)
             records = stock_daily_quote_fetcher.fetch(
                 task.symbol,
                 task.start_date,
@@ -193,6 +199,7 @@ class DailyQuotePipeline(BasePipeline):
         records: list[DailyQuoteRecord],
     ) -> None:
         repositories.daily_quote.upsert_many(records)
+        repositories.commit()
 
     def _select_target_stocks(
         self,
@@ -215,38 +222,6 @@ class DailyQuotePipeline(BasePipeline):
         if not targets:
             raise ValueError("no active stock matched the given stock_id/symbol filter")
         return targets
-
-    def _ensure_existing_history_complete(
-        self,
-        repositories: RepositorySession,
-        *,
-        stock: StockSyncTarget,
-        history_start_date: str,
-        latest_trade_date: str,
-    ) -> None:
-        expected_trade_dates = repositories.trading_calendar.list_open_trade_dates(
-            start_date=history_start_date,
-            end_date=latest_trade_date,
-        )
-        loaded_trade_dates = repositories.daily_quote.list_trade_dates_by_stock(
-            stock_id=stock.stock_id,
-            start_date=history_start_date,
-            end_date=latest_trade_date,
-        )
-        if expected_trade_dates == loaded_trade_dates:
-            return
-
-        missing_dates = sorted(set(expected_trade_dates) - set(loaded_trade_dates))
-        unexpected_dates = sorted(set(loaded_trade_dates) - set(expected_trade_dates))
-        detail = []
-        if missing_dates:
-            detail.append(f"missing={','.join(missing_dates[:5])}")
-        if unexpected_dates:
-            detail.append(f"unexpected={','.join(unexpected_dates[:5])}")
-        message = ", ".join(detail) or "coverage mismatch"
-        raise ValueError(
-            f"historical daily quotes for {stock.symbol} are incomplete before incremental sync: {message}"
-        )
 
     @classmethod
     def _normalize_str_filters(
