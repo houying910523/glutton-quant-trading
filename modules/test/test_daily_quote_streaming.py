@@ -1,159 +1,110 @@
 from __future__ import annotations
 
-import tempfile
 import unittest
-from pathlib import Path
+from unittest.mock import patch
 
-from modules.datasource.pipeline.raw_store import RawStore
-from modules.datasource.pipeline.services import DailyQuotePipeline
-from modules.datasource.shared import FetchRequest, RawRecord, now_shanghai, parse_date
-from modules.repositories import RepositorySession
-from modules.repositories.database import SQLiteDatabase
-from modules.repositories.models import StockRecord, TradingCalendarRecord
-from modules.repositories.schema import SQLiteSchemaManager
+from modules.datasource.pipeline.services.daily_quote import DailyQuotePipeline, Task
+from modules.datasource.shared import now_shanghai, parse_date
+from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
 
 
-class TrackingDailyQuotePipeline(DailyQuotePipeline):
-    def __init__(self, database: SQLiteDatabase, raw_store: RawStore) -> None:
-        super().__init__(database, raw_store)
-        self.upsert_sizes: list[int] = []
+class FakeDailyQuoteFetcher:
+    def __init__(self) -> None:
+        self.calls: list[tuple[str, str, str, int, int]] = []
 
-    def _upsert_records(self, repositories, records):
-        self.upsert_sizes.append(len(records))
-        super()._upsert_records(repositories, records)
+    def fetch(
+        self,
+        symbol: str,
+        start_date: str,
+        end_date: str,
+        stock_id: int,
+        batch_id: int,
+    ) -> list[DailyQuoteRecord]:
+        self.calls.append((symbol, start_date, end_date, stock_id, batch_id))
+        now = now_shanghai()
+        return [
+            DailyQuoteRecord(
+                id=None,
+                stock_id=stock_id,
+                trade_date=parse_date(start_date),
+                open=1000,
+                high=1010,
+                low=990,
+                close=1005,
+                volume=100000,
+                turnover=100000000,
+                ingestion_batch_id=batch_id,
+                ingested_at=now,
+                updated_at=now,
+            )
+        ]
 
 
-class DailyQuoteStreamingTest(unittest.TestCase):
-    def test_execute_stream_upserts_each_symbol_chunk(self) -> None:
-        with tempfile.TemporaryDirectory() as tmp_dir:
-            root = Path(tmp_dir)
-            database = SQLiteDatabase(root / "glutton.db")
-            SQLiteSchemaManager(database).initialize()
-            raw_store = RawStore(root / "raw")
-            pipeline = TrackingDailyQuotePipeline(database, raw_store)
-            now = now_shanghai()
-            request = FetchRequest(
-                resource_type="daily_quote",
-                sync_mode="incremental",
+class DailyQuoteDispatchTest(unittest.TestCase):
+    def test_parallel_process_yields_record_batches_for_each_task(self) -> None:
+        batch = IngestionBatchRecord(
+            id=42,
+            batch_key="daily_quote_2026-09-05_001",
+            source_name="akshare",
+            resource_type="daily_quote",
+            sync_mode="incremental",
+            start_date=None,
+            end_date=None,
+            request_params={},
+            status="running",
+            started_at="2026-09-05 10:00:00",
+            finished_at=None,
+            raw_count=0,
+            valid_count=0,
+            loaded_count=0,
+            rejected_count=0,
+            retry_count=0,
+            error_summary=None,
+            created_at="2026-09-05 10:00:00",
+            updated_at="2026-09-05 10:00:00",
+        )
+        tasks = [
+            Task(
+                stock_id=1,
+                symbol="600519",
+                history_start_date="2024-08-26",
                 start_date="2024-08-26",
                 end_date="2024-08-26",
-                symbols=["600519", "000001"],
-                trade_date="2024-08-26",
+            ),
+            Task(
+                stock_id=2,
+                symbol="000001",
+                history_start_date="2024-08-26",
+                start_date="2024-08-26",
+                end_date="2024-08-26",
+            ),
+        ]
+        fetcher = FakeDailyQuoteFetcher()
+
+        with patch(
+            "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
+            return_value=fetcher,
+        ):
+            yielded = list(
+                DailyQuotePipeline._parallel_process_daily_quote(
+                    "akshare",
+                    tasks,
+                    batch,
+                )
             )
-            with RepositorySession(database, transactional=True) as repositories:
-                repositories.stock.upsert_many(
-                    [
-                        StockRecord(
-                            id=None,
-                            market="CN",
-                            exchange="SSE",
-                            symbol="600519",
-                            ticker="600519",
-                            name="贵州茅台",
-                            asset_type="stock",
-                            currency="CNY",
-                            lot_size=100,
-                            listed_at=None,
-                            delisted_at=None,
-                            status="active",
-                            created_at=now,
-                            updated_at=now,
-                        ),
-                        StockRecord(
-                            id=None,
-                            market="CN",
-                            exchange="SZSE",
-                            symbol="000001",
-                            ticker="000001",
-                            name="平安银行",
-                            asset_type="stock",
-                            currency="CNY",
-                            lot_size=100,
-                            listed_at=None,
-                            delisted_at=None,
-                            status="active",
-                            created_at=now,
-                            updated_at=now,
-                        ),
-                    ]
-                )
-                repositories.trading_calendar.upsert_many(
-                    [
-                        TradingCalendarRecord(
-                            id=None,
-                            market="CN",
-                            trade_date=parse_date("2024-08-26"),
-                            is_open=True,
-                            created_at=now,
-                            updated_at=now,
-                        )
-                    ]
-                )
-                batch = repositories.batch.create_batch(
-                    source_name="akshare",
-                    request=request,
-                )
-                repositories.batch.mark_running(batch.id)
-            batch = batch.model_copy(update={"status": "running"})
 
-            chunks = [
-                [
-                    RawRecord(
-                        ingestion_batch_id=batch.id,
-                        source_name="akshare",
-                        resource_type="daily_quote",
-                        source_record_key="sh600519:2024-08-26",
-                        fetched_at=now.strftime("%Y-%m-%d %H:%M:%S"),
-                        payload={
-                            "date": "2024-08-26",
-                            "open": 10.0,
-                            "close": 10.2,
-                            "high": 10.3,
-                            "low": 9.9,
-                            "volume": 123456,
-                            "amount": 7890000.0,
-                            "_market_symbol": "sh600519",
-                            "_symbol": "600519",
-                            "_exchange": "SSE",
-                        },
-                    )
-                ],
-                [
-                    RawRecord(
-                        ingestion_batch_id=batch.id,
-                        source_name="akshare",
-                        resource_type="daily_quote",
-                        source_record_key="sz000001:2024-08-26",
-                        fetched_at=now.strftime("%Y-%m-%d %H:%M:%S"),
-                        payload={
-                            "date": "2024-08-26",
-                            "open": 20.0,
-                            "close": 20.2,
-                            "high": 20.3,
-                            "low": 19.9,
-                            "volume": 223456,
-                            "amount": 8890000.0,
-                            "_market_symbol": "sz000001",
-                            "_symbol": "000001",
-                            "_exchange": "SZSE",
-                        },
-                    )
-                ],
-            ]
-
-            result = pipeline.execute_stream(batch, request, chunks)
-
-            self.assertEqual(result.status, "success")
-            self.assertEqual(result.row_count_loaded, 2)
-            self.assertEqual(pipeline.upsert_sizes, [1, 1])
-            with RepositorySession(database) as repositories:
-                self.assertEqual(
-                    repositories.daily_quote.list_loaded_trade_dates(
-                        start_date="2024-08-26",
-                        end_date="2024-08-26",
-                    ),
-                    {"2024-08-26"},
-                )
+        self.assertEqual(len(yielded), 2)
+        self.assertEqual(
+            sorted(task.symbol for task, _ in yielded), ["000001", "600519"]
+        )
+        self.assertEqual([len(records) for _, records in yielded], [1, 1])
+        self.assertEqual(
+            sorted(fetcher.calls),
+            [
+                ("000001", "2024-08-26", "2024-08-26", 2, 42),
+                ("600519", "2024-08-26", "2024-08-26", 1, 42),
+            ],
+        )
 
 
 if __name__ == "__main__":

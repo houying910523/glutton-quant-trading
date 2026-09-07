@@ -8,7 +8,6 @@ from unittest.mock import patch
 from modules.datasource.pipeline.raw_store import RawStore
 from modules.datasource.pipeline.services.daily_quote import DailyQuotePipeline
 from modules.datasource.shared import (
-    PipelineExecutionError,
     format_timestamp,
     now_shanghai,
     parse_date,
@@ -138,7 +137,7 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                     ["2024-08-26", "2024-08-27", "2024-08-28", "2024-08-29"],
                 )
 
-    def test_run_rejects_when_existing_history_has_gap(self) -> None:
+    def test_run_continues_from_latest_day_even_if_older_history_has_gap(self) -> None:
         with self._context() as ctx:
             stock_id = self._seed_stock(
                 ctx.database,
@@ -160,13 +159,14 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                 "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
                 return_value=fetcher,
             ):
-                with self.assertRaisesRegex(
-                    PipelineExecutionError,
-                    "historical daily quotes for 600519 are incomplete",
-                ):
-                    ctx.pipeline.run("akshare", symbol="600519")
+                result = ctx.pipeline.run("akshare", symbol="600519")
 
-            self.assertEqual(fetcher.calls, [])
+            self.assertEqual(result.status, "success")
+            self.assertEqual(result.loaded_count, 1)
+            self.assertEqual(
+                fetcher.calls,
+                [("600519", "2024-08-29", "2024-08-29", stock_id, result.id)],
+            )
             with RepositorySession(ctx.database) as repositories:
                 self.assertEqual(
                     repositories.daily_quote.list_trade_dates_by_stock(
@@ -174,7 +174,7 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                         start_date="2024-08-26",
                         end_date="2024-08-29",
                     ),
-                    ["2024-08-26", "2024-08-28"],
+                    ["2024-08-26", "2024-08-28", "2024-08-29"],
                 )
 
     def _seed_stock(
