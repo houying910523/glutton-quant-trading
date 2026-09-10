@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import sys
 from concurrent.futures import as_completed, ThreadPoolExecutor
 from dataclasses import dataclass
 from datetime import timedelta
@@ -49,7 +48,7 @@ class DailyQuotePipeline(BasePipeline):
         tasks = self._incremental_daily_quote(repositories, target_stocks)
 
         total = 0
-        for task, records in self._sequence_process_daily_quote(
+        for task, records in self._parallel_process_daily_quote(
             adaptor_type, tasks, batch
         ):
             self._upsert_records(repositories, records)
@@ -149,9 +148,9 @@ class DailyQuotePipeline(BasePipeline):
         queue = Queue(maxsize=len(tasks) + 1)
 
         from modules.datasource.adaptors.base import create_stock_daily_quote_fetcher
+        from tqdm import tqdm
 
         def fetch_and_write(task: Task) -> None:
-            sys.stderr.write(f"task {task.stock_id} {task.symbol} start\n")
             stock_daily_quote_fetcher = create_stock_daily_quote_fetcher(adaptor_type)
             records = stock_daily_quote_fetcher.fetch(
                 task.symbol,
@@ -160,7 +159,6 @@ class DailyQuotePipeline(BasePipeline):
                 batch_id=batch.id,
                 stock_id=task.stock_id,
             )
-            sys.stderr.write(f"task {task.stock_id} {task.symbol} fetched\n")
             queue.put((task, records), block=True)
 
         def async_submit_task() -> None:
@@ -171,27 +169,35 @@ class DailyQuotePipeline(BasePipeline):
                         future = executor.submit(fetch_and_write, task)
                         future_list.append(future)
 
-                    sys.stderr.write("waiting for all task done...\n")
                     for future in as_completed(future_list):
                         future.result()
             except Exception as exc:
                 queue.put(exc, block=True)
             finally:
                 queue.put(sentinel, block=True)
-                sys.stderr.write("all task done.\n")
 
         import threading
 
         threading.Thread(target=async_submit_task).start()
 
-        while True:
-            obj = queue.get()
-            if obj is sentinel:
-                break
-            if isinstance(obj, Exception):
-                raise obj
-            sys.stderr.write(f"get records {len(obj[1])}")
-            yield obj
+        progress = tqdm(
+            total=len(tasks),
+            ncols=100,
+            desc="Fetching",
+            leave=False,
+            unit="stock",
+        )
+        try:
+            while True:
+                obj = queue.get()
+                if obj is sentinel:
+                    break
+                if isinstance(obj, Exception):
+                    raise obj
+                progress.update(1)
+                yield obj
+        finally:
+            progress.close()
 
     def _upsert_records(
         self,

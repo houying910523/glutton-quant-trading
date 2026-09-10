@@ -1,11 +1,10 @@
 from __future__ import annotations
 
-import contextlib
-import io
 import time
 from abc import ABC, abstractmethod
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
+from threading import Lock
 from typing import Any, Callable, Iterable, TypeVar
 
 import pandas as pd
@@ -62,11 +61,33 @@ class AkshareClient:
 
 T = TypeVar("T")
 
+_AKSHARE_STOCK_HIST_TX_TQDM_DISABLED = False
+_AKSHARE_STOCK_HIST_TX_TQDM_LOCK = Lock()
+
+
+def _disable_akshare_stock_hist_tx_tqdm() -> None:
+    global _AKSHARE_STOCK_HIST_TX_TQDM_DISABLED
+
+    if _AKSHARE_STOCK_HIST_TX_TQDM_DISABLED:
+        return
+
+    with _AKSHARE_STOCK_HIST_TX_TQDM_LOCK:
+        if _AKSHARE_STOCK_HIST_TX_TQDM_DISABLED:
+            return
+
+        from akshare.stock_feature import stock_hist_tx
+
+        stock_hist_tx.get_tqdm = lambda enable=True: (
+            lambda iterable, *args, **kwargs: iterable
+        )
+        _AKSHARE_STOCK_HIST_TX_TQDM_DISABLED = True
+
 
 class BaseAkshareAdapterMixin[T](ABC):
     source_name = "akshare"
 
     def __init__(self) -> None:
+        _disable_akshare_stock_hist_tx_tqdm()
         self._client = AkshareClient()
 
     @staticmethod
@@ -79,11 +100,7 @@ class BaseAkshareAdapterMixin[T](ABC):
         last_error: Exception | None = None
         for attempt in range(3):
             try:
-                with (
-                    contextlib.redirect_stdout(io.StringIO()),
-                    contextlib.redirect_stderr(io.StringIO()),
-                ):
-                    frame = function()
+                frame = function()
                 if frame is None:
                     return []
                 return list(frame.to_dict(orient="records"))
@@ -263,7 +280,11 @@ class AkshareTradingCalendarAdapter(
 ):
     def fetch(self, start_date: str, end_date: str) -> list[str]:
         raw_list = self._call_frame(lambda: self._client.tool_trade_date_hist_sina())
-        return self._deduplicate_records(raw_list)
+        records = self._deduplicate_records(raw_list)
+        records = [
+            trade_date for trade_date in records if start_date <= trade_date <= end_date
+        ]
+        return records
 
     def convert_to_record(self, raw: dict[str, Any]) -> str | None:
         trade_date: date | None = raw.get("trade_date")

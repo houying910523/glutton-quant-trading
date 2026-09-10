@@ -51,8 +51,8 @@ class TradingCalendarPipeline(BasePipeline):
             current += timedelta(days=1)
 
         accepted = list(accepted_map.values())
-        with repositories as session:
-            session.trading_calendar.upsert_many(accepted)
+
+        repositories.trading_calendar.upsert_many(accepted)
 
         return PipelineOutcome(
             status="success",
