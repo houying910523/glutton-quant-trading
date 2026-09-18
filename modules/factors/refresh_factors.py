@@ -1,12 +1,15 @@
 from __future__ import annotations
 
 import json
+import sys
+from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
 from typing import Any
 
 import polars as pl
 import typer
+from tqdm import tqdm
 
 from modules.config import DEFAULT_DB_PATH, DEFAULT_FACTOR_ROOT, resolve_project_path
 from modules.factors.base import load_factor
@@ -45,24 +48,56 @@ def refresh_factors(
     with RepositorySession(database) as repositories:
         definitions = _load_definitions(repositories, factor_ids)
 
+    total_months = sum(
+        len(_pending_month_starts(definition, start_date, end_date))
+        for definition in definitions
+    )
+    progress = tqdm(
+        total=total_months,
+        ncols=100,
+        desc="Refreshing factors",
+        unit="month",
+        leave=True,
+        disable=not sys.stderr.isatty(),
+    )
+
     results: list[dict[str, Any]] = []
-    for definition in definitions:
-        result = refresh_factor_definition(
-            definition,
-            loader,
-            store,
-            start_date=start_date,
-            end_date=end_date,
-            instruments=instruments,
-        )
-        if result["last_materialized_date"] is not None:
-            with RepositorySession(database, transactional=True) as repositories:
-                repositories.factor_definition.set_last_materialized_date(
-                    factor_id=definition.factor_id,
-                    version=definition.version,
-                    last_materialized_date=result["last_materialized_date"],
-                )
-        results.append(result)
+    try:
+        for definition in definitions:
+            progress.set_postfix_str(f"{definition.factor_id}@{definition.version}")
+
+            def on_month_processed(_: date) -> None:
+                progress.update(1)
+
+            def on_month_materialized(
+                materialized_date: date,
+                *,
+                current_definition: FactorDefinition = definition,
+            ) -> None:
+                formatted_date = format_date(materialized_date)
+                if formatted_date is None:
+                    return
+                with RepositorySession(database, transactional=True) as repositories:
+                    repositories.factor_definition.set_last_materialized_date(
+                        factor_id=current_definition.factor_id,
+                        version=current_definition.version,
+                        last_materialized_date=formatted_date,
+                    )
+                current_definition.last_materialized_date = formatted_date
+
+            result = refresh_factor_definition(
+                definition,
+                loader,
+                store,
+                start_date=start_date,
+                end_date=end_date,
+                instruments=instruments,
+                on_month_processed=on_month_processed,
+                on_month_materialized=on_month_materialized,
+            )
+            results.append(result)
+    finally:
+        progress.close()
     return results
 
 
@@ -74,6 +109,8 @@ def refresh_factor_definition(
     start_date: date,
     end_date: date,
     instruments: list[str] | None = None,
+    on_month_processed: Callable[[date], None] | None = None,
+    on_month_materialized: Callable[[date], None] | None = None,
 ) -> dict[str, Any]:
     factor = load_factor(definition)
     spec = factor.spec(definition.params)
@@ -81,43 +118,45 @@ def refresh_factor_definition(
 
     partitions_written: list[str] = []
     rows_written = 0
-    last_materialized_date: date | None = None
-    for month_start in _iter_month_starts(start_date, end_date):
-        month_end = _month_end(month_start)
+    last_materialized_date = parse_date(definition.last_materialized_date)
+    pending_month_starts = _pending_month_starts(definition, start_date, end_date)
+    for month_start in pending_month_starts:
+        partition_end_date = min(_month_end(month_start), end_date)
         load_start = month_start - timedelta(days=_history_padding_days(spec))
         stock_daily = loader.load_stock_daily(
             start_date=load_start,
-            end_date=month_end,
+            end_date=partition_end_date,
             instruments=instruments,
             columns=spec.required_columns,
         )
-        if stock_daily.is_empty():
-            continue
+        if not stock_daily.is_empty():
+            computed = factor.compute(stock_daily, definition.params)
+            output = _normalize_output_frame(
+                computed,
+                output_columns=definition.output_columns,
+                start_date=month_start,
+                end_date=partition_end_date,
+            )
+            if not output.is_empty():
+                path = store.write_month_partition(
+                    storage_key=definition.storage_key,
+                    frame=output,
+                    year=month_start.year,
+                    month=month_start.month,
+                )
+                partitions_written.append(str(path))
+                rows_written += output.height
+                partition_last_date = output["trade_date"].max()
+                if partition_last_date is not None and (
+                    last_materialized_date is None
+                    or partition_last_date > last_materialized_date
+                ):
+                    last_materialized_date = partition_last_date
+                    if on_month_materialized is not None:
+                        on_month_materialized(partition_last_date)
 
-        computed = factor.compute(stock_daily, definition.params)
-        output = _normalize_output_frame(
-            computed,
-            output_columns=definition.output_columns,
-            start_date=month_start,
-            end_date=month_end,
-        )
-        if output.is_empty():
-            continue
-
-        path = store.write_month_partition(
-            storage_key=definition.storage_key,
-            frame=output,
-            year=month_start.year,
-            month=month_start.month,
-        )
-        partitions_written.append(str(path))
-        rows_written += output.height
-        partition_last_date = output["trade_date"].max()
-        if partition_last_date is not None and (
-            last_materialized_date is None
-            or partition_last_date > last_materialized_date
-        ):
-            last_materialized_date = partition_last_date
+        if on_month_processed is not None:
+            on_month_processed(month_start)
 
     return {
         "factor_id": definition.factor_id,
@@ -281,6 +320,21 @@ def _emit_refresh_logs(
         ),
         err=True,
     )
+
+
+def _pending_month_starts(
+    definition: FactorDefinition,
+    start_date: date,
+    end_date: date,
+) -> list[date]:
+    last_materialized_date = parse_date(definition.last_materialized_date)
+    if last_materialized_date is None:
+        return _iter_month_starts(start_date, end_date)
+
+    resume_date = max(start_date, last_materialized_date + timedelta(days=1))
+    if resume_date > end_date:
+        return []
+    return _iter_month_starts(resume_date, end_date)
 
 
 def _validate_spec(definition: FactorDefinition, spec: FactorSpec) -> None:

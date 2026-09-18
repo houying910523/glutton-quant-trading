@@ -9,6 +9,7 @@ dependencies = [
     "polars>=1.8.2,<2",
     "pydantic>=2.9.2,<3",
     "typer>=0.12.5,<1",
+    "tqdm>=4.66.5,<5",
 ]
 
 [project.optional-dependencies]
