@@ -2,11 +2,15 @@ from __future__ import annotations
 
 from datetime import date
 import unittest
+from unittest.mock import patch
+
+from akshare.stock_feature import stock_hist_tx
 
 from modules.datasource.adaptors.akshare import (
     AkshareDailyQuoteAdapter,
     AkshareStockAdapter,
     AkshareTradingCalendarAdapter,
+    _disable_akshare_stock_hist_tx_tqdm,
 )
 
 
@@ -108,6 +112,22 @@ class FakeAkshareClient:
 
 
 class AkshareAdapterTest(unittest.TestCase):
+    def test_disable_stock_hist_tx_tqdm_replaces_progress_wrapper(self) -> None:
+        with patch(
+            "modules.datasource.adaptors.akshare._AKSHARE_STOCK_HIST_TX_TQDM_DISABLED",
+            False,
+        ):
+            original_get_tqdm = stock_hist_tx.get_tqdm
+            try:
+                stock_hist_tx.get_tqdm = lambda enable=True: "original"
+
+                _disable_akshare_stock_hist_tx_tqdm()
+
+                wrapped = stock_hist_tx.get_tqdm()
+                self.assertEqual(list(wrapped([1, 2, 3])), [1, 2, 3])
+            finally:
+                stock_hist_tx.get_tqdm = original_get_tqdm
+
     def test_stock_adapter_fetches_active_and_delisted_records(self) -> None:
         client = FakeAkshareClient()
         adapter = AkshareStockAdapter()

@@ -4,7 +4,7 @@ import unittest
 from unittest.mock import patch
 
 from modules.datasource.pipeline.services.daily_quote import DailyQuotePipeline, Task
-from modules.datasource.shared import now_shanghai, parse_date
+from modules.utils.time_util import now_shanghai, parse_date
 from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
 
 
@@ -38,6 +38,20 @@ class FakeDailyQuoteFetcher:
                 updated_at=now,
             )
         ]
+
+
+class FakeProgressBar:
+    def __init__(self, *args, **kwargs) -> None:
+        self.args = args
+        self.kwargs = kwargs
+        self.updates = 0
+        self.closed = False
+
+    def update(self, count: int = 1) -> None:
+        self.updates += count
+
+    def close(self) -> None:
+        self.closed = True
 
 
 class DailyQuoteDispatchTest(unittest.TestCase):
@@ -80,10 +94,19 @@ class DailyQuoteDispatchTest(unittest.TestCase):
             ),
         ]
         fetcher = FakeDailyQuoteFetcher()
+        progress_bars: list[FakeProgressBar] = []
 
-        with patch(
-            "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
-            return_value=fetcher,
+        def create_progress_bar(*args, **kwargs) -> FakeProgressBar:
+            progress_bar = FakeProgressBar(*args, **kwargs)
+            progress_bars.append(progress_bar)
+            return progress_bar
+
+        with (
+            patch(
+                "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
+                return_value=fetcher,
+            ),
+            patch("tqdm.tqdm", side_effect=create_progress_bar),
         ):
             yielded = list(
                 DailyQuotePipeline._parallel_process_daily_quote(
@@ -105,6 +128,10 @@ class DailyQuoteDispatchTest(unittest.TestCase):
                 ("600519", "2024-08-26", "2024-08-26", 1, 42),
             ],
         )
+        self.assertEqual(len(progress_bars), 1)
+        self.assertEqual(progress_bars[0].kwargs["total"], 2)
+        self.assertEqual(progress_bars[0].updates, 2)
+        self.assertTrue(progress_bars[0].closed)
 
 
 if __name__ == "__main__":

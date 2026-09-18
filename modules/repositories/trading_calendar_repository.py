@@ -1,7 +1,7 @@
 from __future__ import annotations
 
 from modules.repositories.models import TradingCalendarRecord
-from modules.datasource.shared import format_date
+from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
 
 

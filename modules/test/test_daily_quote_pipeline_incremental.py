@@ -7,7 +7,7 @@ from unittest.mock import patch
 
 from modules.datasource.pipeline.raw_store import RawStore
 from modules.datasource.pipeline.services.daily_quote import DailyQuotePipeline
-from modules.datasource.shared import (
+from modules.utils.time_util import (
     format_timestamp,
     now_shanghai,
     parse_date,

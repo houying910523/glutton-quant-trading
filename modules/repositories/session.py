@@ -15,6 +15,9 @@ class RepositorySession:
 
     def __enter__(self) -> "RepositorySession":
         from modules.repositories.daily_quote_repository import DailyQuoteRepository
+        from modules.repositories.factor_definition_repository import (
+            FactorDefinitionRepository,
+        )
         from modules.repositories.ingestion_batch_repository import BatchRepository
         from modules.repositories.stock_repository import StockRepository
         from modules.repositories.trading_calendar_repository import (
@@ -26,6 +29,7 @@ class RepositorySession:
             raise Exception("连接数据库失败")
         self.batch = BatchRepository(connection)
         self.daily_quote = DailyQuoteRepository(connection)
+        self.factor_definition = FactorDefinitionRepository(connection)
         self.stock = StockRepository(connection)
         self.trading_calendar = TradingCalendarRepository(connection)
         self._connection = connection

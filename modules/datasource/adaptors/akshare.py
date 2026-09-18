@@ -14,8 +14,8 @@ from modules.datasource.adaptors.base import (
     TradingCalendarFetcher,
     StockDailyQuoteFetcher,
 )
-from modules.datasource.shared import (
-    ConfigurationError,
+from modules.datasource.exceptions import ConfigurationError
+from modules.utils.time_util import (
     compact_date,
     parse_date,
     now_shanghai,

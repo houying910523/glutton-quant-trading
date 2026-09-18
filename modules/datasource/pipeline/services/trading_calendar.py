@@ -5,7 +5,7 @@ from typing import TYPE_CHECKING, Any
 
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.shared import now_shanghai, parse_date
+from modules.utils.time_util import now_shanghai, parse_date
 from modules.repositories import RepositorySession
 from modules.repositories.models import IngestionBatchRecord, TradingCalendarRecord
 

@@ -3,9 +3,13 @@ from __future__ import annotations
 import sqlite3
 from pathlib import Path
 
+from modules.config import resolve_project_path, DEFAULT_DB_PATH
+
 
 class SQLiteDatabase:
-    def __init__(self, db_path: str | Path) -> None:
+    default_db_path = resolve_project_path(DEFAULT_DB_PATH)
+
+    def __init__(self, db_path: str | Path = default_db_path) -> None:
         self._db_path = Path(db_path)
 
     @property

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import unittest
 
-from modules.datasource.shared import (
+from modules.utils.time_util import (
     compact_date,
     format_date,
     parse_date,

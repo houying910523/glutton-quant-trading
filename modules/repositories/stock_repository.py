@@ -3,7 +3,7 @@ from __future__ import annotations
 from typing import Iterable
 
 from modules.repositories.models import StockRecord
-from modules.datasource.shared import format_date
+from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
 
 

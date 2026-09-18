@@ -3,7 +3,7 @@ from __future__ import annotations
 import math
 
 from modules.repositories.models import DailyQuoteRecord
-from modules.datasource.shared import format_date
+from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
 from modules.repositories.ingestion_batch_repository import BatchRepository
 

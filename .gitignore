@@ -4,3 +4,4 @@ workspace/
 .idea/
 data/
 github/
+.DS_Store

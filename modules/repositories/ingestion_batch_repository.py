@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 
-from modules.datasource.shared import format_timestamp
+from modules.utils.time_util import format_timestamp
 from modules.repositories.base import SQLiteRepository
 from modules.repositories.models import IngestionBatchRecord
 

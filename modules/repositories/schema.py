@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+
 from modules.config import PROJECT_ROOT
 from modules.repositories.database import SQLiteDatabase
 
@@ -14,3 +15,8 @@ class SQLiteSchemaManager:
         with self._database.connect() as connection:
             for script_path in scripts:
                 connection.executescript(script_path.read_text(encoding="utf-8"))
+
+
+if __name__ == "__main__":
+    schema_manager = SQLiteSchemaManager(SQLiteDatabase())
+    schema_manager.initialize()

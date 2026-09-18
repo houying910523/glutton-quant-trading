@@ -1,16 +1,16 @@
 from __future__ import annotations
 
-import hashlib
-import json
-from datetime import date, datetime
 from pathlib import Path
 from typing import Any
 
+from modules.config import DEFAULT_RAW_ROOT, resolve_project_path
 from modules.repositories.models import IngestionBatchRecord, RawManifestRecord
 
 
 class RawStore:
-    def __init__(self, root_path: str | Path) -> None:
+    default_raw_root = resolve_project_path(DEFAULT_RAW_ROOT)
+
+    def __init__(self, root_path: str | Path = default_raw_root) -> None:
         self._root_path = Path(root_path)
 
     def batch_directory(self, batch: IngestionBatchRecord) -> Path:
@@ -58,32 +58,3 @@ class RawStore:
             encoding="utf-8",
         )
         return manifest_path
-
-    def write_records_jsonl(
-        self, batch: IngestionBatchRecord, records: list[dict]
-    ) -> tuple[Path, str]:
-        directory = self.batch_directory(batch)
-        directory.mkdir(parents=True, exist_ok=True)
-        records_path = directory / "records.jsonl"
-        hasher = hashlib.sha256()
-        with records_path.open("w", encoding="utf-8") as handle:
-            for record in records:
-                serialized = json.dumps(
-                    record,
-                    ensure_ascii=False,
-                    separators=(",", ":"),
-                    default=_json_default,
-                )
-                handle.write(serialized)
-                handle.write("\n")
-                hasher.update(serialized.encode("utf-8"))
-                hasher.update(b"\n")
-        return records_path, hasher.hexdigest()
-
-
-def _json_default(value: object) -> str:
-    if isinstance(value, (date, datetime)):
-        return value.isoformat()
-    raise TypeError(
-        f"Object of type {value.__class__.__name__} is not JSON serializable"
-    )

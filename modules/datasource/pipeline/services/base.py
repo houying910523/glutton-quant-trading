@@ -5,7 +5,8 @@ from typing import Any, TypeVar
 
 from modules.datasource.adaptors import AdapterType
 from modules.datasource.pipeline.raw_store import RawStore
-from modules.datasource.shared import PipelineExecutionError, format_timestamp
+from modules.datasource.exceptions import PipelineExecutionError
+from modules.utils.time_util import format_timestamp
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
 from modules.repositories.models import IngestionBatchRecord, BatchStatus
