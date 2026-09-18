@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from modules.datasource.pipeline.raw_store import RawStore
-from modules.datasource.pipeline.services.stock import StockPipeline
+from modules.datasource.pipeline.stock import StockPipeline
 from modules.datasource.exceptions import PipelineExecutionError
 from modules.utils.time_util import now_shanghai
 from modules.repositories import RepositorySession

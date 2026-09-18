@@ -6,7 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from modules.datasource.pipeline.raw_store import RawStore
-from modules.datasource.pipeline.services.daily_quote import DailyQuotePipeline
+from modules.datasource.pipeline.daily_quote import DailyQuotePipeline
 from modules.utils.time_util import (
     format_timestamp,
     now_shanghai,

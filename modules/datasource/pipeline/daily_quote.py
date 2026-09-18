@@ -6,7 +6,7 @@ from datetime import timedelta
 from typing import Any, Generator
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.pipeline.services.base import BasePipeline, PipelineOutcome
+from modules.datasource.pipeline.base import BasePipeline, PipelineOutcome
 from modules.utils.time_util import now_shanghai, parse_date
 from modules.repositories import RepositorySession
 from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord

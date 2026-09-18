@@ -1,10 +1,10 @@
 from pathlib import Path
 
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_DB_PATH = PROJECT_ROOT / "data/system/glutton.db"
-DEFAULT_RAW_ROOT = PROJECT_ROOT / "data/raw"
-DEFAULT_RESEARCH_ROOT = PROJECT_ROOT / "data/research"
-DEFAULT_FACTOR_ROOT = DEFAULT_RESEARCH_ROOT / "factors"
+DATA_PATH = PROJECT_ROOT / "data"
+DEFAULT_DB_PATH = DATA_PATH / "system/glutton.db"
+DEFAULT_RAW_ROOT = DATA_PATH / "raw"
+DEFAULT_INDICATOR_ROOT = DATA_PATH / "indicators"
 
 
 def resolve_project_path(path_value: str | Path) -> Path:

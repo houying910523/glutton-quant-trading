@@ -7,9 +7,24 @@ import polars as pl
 from modules.repositories.database import SQLiteDatabase
 
 
-class SQLiteMarketLoader:
+class StockDailyService:
     def __init__(self, database: SQLiteDatabase) -> None:
         self._database = database
+
+    def load_daily_bars(
+        self,
+        *,
+        start_date: date,
+        end_date: date,
+        instruments: list[str] | None = None,
+        columns: list[str] | None = None,
+    ) -> pl.DataFrame:
+        return self.load_stock_daily(
+            start_date=start_date,
+            end_date=end_date,
+            instruments=instruments,
+            columns=columns,
+        )
 
     def load_stock_daily(
         self,

@@ -6,9 +6,9 @@ from typing import Any
 
 import polars as pl
 
-from modules.factors.base import Factor
-from modules.factors.builtin.common import rolling_mean
-from modules.factors.models import FactorSpec
+from modules.indicators.base import Indicator
+from modules.indicators.builtin.common import rolling_mean
+from modules.indicators.models import IndicatorSpec
 
 
 def _rolling_std(values: Sequence[float | None], window: int) -> list[float | None]:
@@ -28,12 +28,12 @@ def _rolling_std(values: Sequence[float | None], window: int) -> list[float | No
     return result
 
 
-class BollingerBandFactor(Factor):
-    def spec(self, params: dict[str, Any]) -> FactorSpec:
+class BollingerBandIndicator(Indicator):
+    def spec(self, params: dict[str, Any]) -> IndicatorSpec:
         window = int(params["window"])
         num_std = int(params["num_std"])
         suffix = f"{window}_{num_std}"
-        return FactorSpec(
+        return IndicatorSpec(
             required_columns=["close"],
             required_history_bars=window,
             output_columns=[

@@ -16,7 +16,7 @@ from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
 from modules.repositories.models import (
     DailyQuoteRecord,
-    FactorDefinitionRecord,
+    IndicatorDefinitionRecord,
     IngestionBatchRecord,
     StockRecord,
 )
@@ -26,39 +26,39 @@ from modules.repositories.schema import SQLiteSchemaManager
 @unittest.skipIf(pl is None, "polars is not installed")
 class RefreshFactorsTest(unittest.TestCase):
     def test_refresh_factors_materializes_month_partition(self) -> None:
-        from modules.factors.refresh_factors import refresh_factors
-        from modules.factors.storage import ParquetFactorStore
+        from modules.indicators.refresh_factors import refresh_factors
+        from modules.indicators.storage import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
-            factor_root = root / "research" / "factors"
+            indicator_root = root / "research" / "factors"
             SQLiteSchemaManager(database).initialize()
             self._seed_market_data(database)
 
             results = refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 25),
                 end_date=date(2024, 1, 25),
                 instruments=["600519.SH"],
             )
 
             self.assertEqual(len(results), 1)
-            self.assertEqual(results[0]["factor_id"], "ma_20")
+            self.assertEqual(results[0]["indicator_id"], "ma_20")
             self.assertEqual(results[0]["rows_written"], 25)
             self.assertEqual(len(results[0]["partitions_written"]), 1)
             self.assertEqual(results[0]["last_materialized_date"], "2024-01-25")
 
             with RepositorySession(database) as repositories:
-                definition = repositories.factor_definition.get("ma_20")
+                indicator_definition = repositories.indicator_definition.get("ma_20")
 
-            self.assertIsNotNone(definition)
-            assert definition is not None
-            self.assertEqual(definition.last_materialized_date, "2024-01-25")
+            self.assertIsNotNone(indicator_definition)
+            assert indicator_definition is not None
+            self.assertEqual(indicator_definition.last_materialized_date, "2024-01-25")
 
-            store = ParquetFactorStore(factor_root)
+            store = IndicatorStore(indicator_root)
             frame = store.read_dataset(storage_key="ma/v1/window_20")
             self.assertEqual(frame.height, 25)
 
@@ -70,13 +70,13 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertAlmostEqual(float(latest["ma_20"][0]), 15.5)
 
     def test_refresh_factors_resumes_from_last_materialized_month(self) -> None:
-        from modules.factors.refresh_factors import refresh_factors
-        from modules.factors.storage import ParquetFactorStore
+        from modules.indicators.refresh_factors import refresh_factors
+        from modules.indicators.storage import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
-            factor_root = root / "research" / "factors"
+            indicator_root = root / "research" / "factors"
             SQLiteSchemaManager(database).initialize()
             self._seed_market_data(
                 database,
@@ -86,16 +86,16 @@ class RefreshFactorsTest(unittest.TestCase):
 
             refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 31),
                 instruments=["600519.SH"],
             )
             results = refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 2, 10),
                 instruments=["600519.SH"],
@@ -107,26 +107,26 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(results[0]["last_materialized_date"], "2024-02-10")
 
             with RepositorySession(database) as repositories:
-                definition = repositories.factor_definition.get("ma_20")
+                indicator_definition = repositories.indicator_definition.get("ma_20")
 
-            self.assertIsNotNone(definition)
-            assert definition is not None
-            self.assertEqual(definition.last_materialized_date, "2024-02-10")
+            self.assertIsNotNone(indicator_definition)
+            assert indicator_definition is not None
+            self.assertEqual(indicator_definition.last_materialized_date, "2024-02-10")
 
-            store = ParquetFactorStore(factor_root)
+            store = IndicatorStore(indicator_root)
             frame = store.read_dataset(storage_key="ma/v1/window_20")
             self.assertEqual(frame.height, 41)
 
     def test_refresh_factors_resumes_from_last_materialized_date_within_month(
         self,
     ) -> None:
-        from modules.factors.refresh_factors import refresh_factors
-        from modules.factors.storage import ParquetFactorStore
+        from modules.indicators.refresh_factors import refresh_factors
+        from modules.indicators.storage import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
-            factor_root = root / "research" / "factors"
+            indicator_root = root / "research" / "factors"
             SQLiteSchemaManager(database).initialize()
             self._seed_market_data(
                 database,
@@ -136,16 +136,16 @@ class RefreshFactorsTest(unittest.TestCase):
 
             refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 25),
                 instruments=["600519.SH"],
             )
             results = refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 2, 10),
                 instruments=["600519.SH"],
@@ -156,7 +156,7 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(len(results[0]["partitions_written"]), 2)
             self.assertEqual(results[0]["last_materialized_date"], "2024-02-10")
 
-            store = ParquetFactorStore(factor_root)
+            store = IndicatorStore(indicator_root)
             frame = store.read_dataset(storage_key="ma/v1/window_20")
             self.assertEqual(frame.height, 41)
             january_frame = frame.filter(
@@ -165,13 +165,13 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(january_frame.height, 31)
 
     def test_refresh_factors_force_recomputes_requested_range(self) -> None:
-        from modules.factors.refresh_factors import refresh_factors
-        from modules.factors.storage import ParquetFactorStore
+        from modules.indicators.refresh_factors import refresh_factors
+        from modules.indicators.storage import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
-            factor_root = root / "research" / "factors"
+            indicator_root = root / "research" / "factors"
             SQLiteSchemaManager(database).initialize()
             self._seed_market_data(
                 database,
@@ -181,16 +181,16 @@ class RefreshFactorsTest(unittest.TestCase):
 
             refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 1, 25),
                 instruments=["600519.SH"],
             )
             results = refresh_factors(
                 database,
-                factor_root,
-                factor_ids=["ma_20"],
+                indicator_root,
+                indicator_ids=["ma_20"],
                 start_date=date(2024, 1, 1),
                 end_date=date(2024, 2, 10),
                 instruments=["600519.SH"],
@@ -202,20 +202,20 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(len(results[0]["partitions_written"]), 2)
             self.assertEqual(results[0]["last_materialized_date"], "2024-02-10")
 
-            store = ParquetFactorStore(factor_root)
+            store = IndicatorStore(indicator_root)
             frame = store.read_dataset(storage_key="ma/v1/window_20")
             self.assertEqual(frame.height, 41)
 
     def test_refresh_factors_persists_monthly_progress_before_later_failure(
         self,
     ) -> None:
-        from modules.factors.refresh_factors import refresh_factors
-        from modules.factors.storage import ParquetFactorStore
+        from modules.indicators.refresh_factors import refresh_factors
+        from modules.indicators.storage import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
-            factor_root = root / "research" / "factors"
+            indicator_root = root / "research" / "factors"
             SQLiteSchemaManager(database).initialize()
             self._seed_market_data(
                 database,
@@ -223,7 +223,7 @@ class RefreshFactorsTest(unittest.TestCase):
                 end_date=date(2024, 2, 10),
             )
 
-            original_write_month_partition = ParquetFactorStore.write_month_partition
+            original_write_month_partition = IndicatorStore.write_month_partition
             call_count = 0
 
             def fail_on_second_month(self, *, storage_key, frame, year, month):
@@ -240,7 +240,7 @@ class RefreshFactorsTest(unittest.TestCase):
                 )
 
             with patch.object(
-                ParquetFactorStore,
+                IndicatorStore,
                 "write_month_partition",
                 autospec=True,
                 side_effect=fail_on_second_month,
@@ -248,19 +248,19 @@ class RefreshFactorsTest(unittest.TestCase):
                 with self.assertRaisesRegex(RuntimeError, "simulated failure"):
                     refresh_factors(
                         database,
-                        factor_root,
-                        factor_ids=["ma_20"],
+                        indicator_root,
+                        indicator_ids=["ma_20"],
                         start_date=date(2024, 1, 1),
                         end_date=date(2024, 2, 10),
                         instruments=["600519.SH"],
                     )
 
             with RepositorySession(database) as repositories:
-                definition = repositories.factor_definition.get("ma_20")
+                indicator_definition = repositories.indicator_definition.get("ma_20")
 
-            self.assertIsNotNone(definition)
-            assert definition is not None
-            self.assertEqual(definition.last_materialized_date, "2024-01-31")
+            self.assertIsNotNone(indicator_definition)
+            assert indicator_definition is not None
+            self.assertEqual(indicator_definition.last_materialized_date, "2024-01-31")
 
     def _seed_market_data(
         self,
@@ -274,14 +274,14 @@ class RefreshFactorsTest(unittest.TestCase):
         timestamp = format_timestamp(now)
 
         with RepositorySession(database, transactional=True) as repositories:
-            repositories.factor_definition.upsert(
-                FactorDefinitionRecord(
-                    factor_id="ma_20",
+            repositories.indicator_definition.upsert(
+                IndicatorDefinitionRecord(
+                    indicator_id="ma_20",
                     version="v1",
-                    factor_name="20日均线",
+                    indicator_name="20日均线",
                     category="trend",
                     compute_ref=(
-                        "modules.factors.builtin.trend:SimpleMovingAverageFactor"
+                        "modules.indicators.builtin.trend:SimpleMovingAverageFactor"
                     ),
                     params={"window": [20]},
                     output_columns=["ma_20"],

@@ -5,27 +5,27 @@ from pathlib import Path
 
 import polars as pl
 
-from modules.factors.storage.path_resolver import (
+from modules.indicators.storage.path_resolver import (
     resolve_dataset_root,
     resolve_partition_glob,
     resolve_partition_path,
 )
 
 
-class ParquetFactorStore:
-    def __init__(self, factor_root: Path) -> None:
-        self._factor_root = Path(factor_root)
+class IndicatorStore:
+    def __init__(self, indicator_root: Path) -> None:
+        self._indicator_root = Path(indicator_root)
 
     @property
-    def factor_root(self) -> Path:
-        return self._factor_root
+    def indicator_root(self) -> Path:
+        return self._indicator_root
 
     def dataset_root(self, storage_key: str) -> Path:
-        return resolve_dataset_root(self._factor_root, storage_key)
+        return resolve_dataset_root(self._indicator_root, storage_key)
 
     def partition_path(self, storage_key: str, *, year: int, month: int) -> Path:
         return resolve_partition_path(
-            self._factor_root,
+            self._indicator_root,
             storage_key,
             year=year,
             month=month,
@@ -50,7 +50,7 @@ class ParquetFactorStore:
         storage_key: str,
         columns: list[str] | None = None,
     ) -> pl.DataFrame:
-        pattern = resolve_partition_glob(self._factor_root, storage_key)
+        pattern = resolve_partition_glob(self._indicator_root, storage_key)
         paths = sorted(Path(path) for path in glob(pattern))
         if not paths:
             return pl.DataFrame()

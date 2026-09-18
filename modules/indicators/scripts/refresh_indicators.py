@@ -11,14 +11,14 @@ import polars as pl
 import typer
 from tqdm import tqdm
 
-from modules.config import DEFAULT_DB_PATH, DEFAULT_FACTOR_ROOT, resolve_project_path
-from modules.factors.base import load_factor
-from modules.factors.models import FactorDefinition, FactorSpec
-from modules.factors.sqlite_market_loader import SQLiteMarketLoader
-from modules.factors.storage import ParquetFactorStore
+from modules.config import DEFAULT_DB_PATH, DEFAULT_INDICATOR_ROOT, resolve_project_path
+from modules.indicators.base import load_factor
+from modules.indicators.models import IndicatorDefinition, IndicatorSpec
+from modules.datasource.service.stock_daily_service import StockDailyService
+from modules.indicators.storage import IndicatorStore
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
-from modules.repositories.models import FactorDefinitionRecord
+from modules.repositories.models import IndicatorDefinitionRecord
 from modules.repositories.schema import SQLiteSchemaManager
 from modules.utils.time_util import format_date, parse_date
 
@@ -31,9 +31,9 @@ app = typer.Typer(
 
 def refresh_factors(
     database: SQLiteDatabase,
-    factor_root: Path,
+    indicator_root: Path,
     *,
-    factor_ids: list[str] | None,
+    indicator_ids: list[str] | None,
     start_date: date,
     end_date: date,
     instruments: list[str] | None = None,
@@ -43,18 +43,18 @@ def refresh_factors(
         raise ValueError("start_date must be <= end_date")
 
     SQLiteSchemaManager(database).initialize()
-    loader = SQLiteMarketLoader(database)
-    store = ParquetFactorStore(factor_root)
+    loader = StockDailyService(database)
+    store = IndicatorStore(indicator_root)
 
     with RepositorySession(database) as repositories:
-        definitions = _load_definitions(repositories, factor_ids)
+        indicator_definitions = _load_indicator_definitions(repositories, indicator_ids)
 
     total_months = sum(
         len(
             _pending_month_ranges(
-                definition,
+                indicator_definition,
                 _resolve_effective_start_date(
-                    definition,
+                    indicator_definition,
                     start_date,
                     end_date,
                     force=force,
@@ -63,7 +63,7 @@ def refresh_factors(
                 force=force,
             )
         )
-        for definition in definitions
+        for indicator_definition in indicator_definitions
     )
     progress = tqdm(
         total=total_months,
@@ -76,8 +76,10 @@ def refresh_factors(
 
     results: list[dict[str, Any]] = []
     try:
-        for definition in definitions:
-            progress.set_postfix_str(f"{definition.factor_id}@{definition.version}")
+        for indicator_definition in indicator_definitions:
+            progress.set_postfix_str(
+                f"{indicator_definition.indicator_id}@{indicator_definition.version}"
+            )
 
             def on_month_processed(_: date) -> None:
                 progress.update(1)
@@ -85,27 +87,29 @@ def refresh_factors(
             def on_month_materialized(
                 materialized_date: date,
                 *,
-                current_definition: FactorDefinition = definition,
+                current_indicator_definition: IndicatorDefinition = (
+                    indicator_definition
+                ),
             ) -> None:
                 formatted_date = format_date(materialized_date)
                 if formatted_date is None:
                     return
                 with RepositorySession(database, transactional=True) as repositories:
-                    repositories.factor_definition.set_last_materialized_date(
-                        factor_id=current_definition.factor_id,
-                        version=current_definition.version,
+                    repositories.indicator_definition.set_last_materialized_date(
+                        indicator_id=current_indicator_definition.indicator_id,
+                        version=current_indicator_definition.version,
                         last_materialized_date=formatted_date,
                     )
-                current_definition.last_materialized_date = formatted_date
+                current_indicator_definition.last_materialized_date = formatted_date
 
             effective_start_date = _resolve_effective_start_date(
-                definition,
+                indicator_definition,
                 start_date,
                 end_date,
                 force=force,
             )
-            result = refresh_factor_definition(
-                definition,
+            result = refresh_indicator_definition(
+                indicator_definition,
                 loader,
                 store,
                 start_date=effective_start_date,
@@ -121,10 +125,10 @@ def refresh_factors(
     return results
 
 
-def refresh_factor_definition(
-    definition: FactorDefinition,
-    loader: SQLiteMarketLoader,
-    store: ParquetFactorStore,
+def refresh_indicator_definition(
+    indicator_definition: IndicatorDefinition,
+    loader: StockDailyService,
+    store: IndicatorStore,
     *,
     start_date: date,
     end_date: date,
@@ -133,15 +137,15 @@ def refresh_factor_definition(
     on_month_processed: Callable[[date], None] | None = None,
     on_month_materialized: Callable[[date], None] | None = None,
 ) -> dict[str, Any]:
-    factor = load_factor(definition)
-    spec = factor.spec(definition.params)
-    _validate_spec(definition, spec)
+    factor = load_factor(indicator_definition)
+    spec = factor.spec(indicator_definition.params)
+    _validate_spec(indicator_definition, spec)
 
     partitions_written: list[str] = []
     rows_written = 0
-    last_materialized_date = parse_date(definition.last_materialized_date)
+    last_materialized_date = parse_date(indicator_definition.last_materialized_date)
     pending_month_ranges = _pending_month_ranges(
-        definition,
+        indicator_definition,
         start_date,
         end_date,
         force=force,
@@ -155,10 +159,10 @@ def refresh_factor_definition(
             columns=spec.required_columns,
         )
         if not stock_daily.is_empty():
-            computed = factor.compute(stock_daily, definition.params)
+            computed = factor.compute(stock_daily, indicator_definition.params)
             output = _normalize_output_frame(
                 computed,
-                output_columns=definition.output_columns,
+                output_columns=indicator_definition.output_columns,
                 start_date=partition_start_date,
                 end_date=partition_end_date,
             )
@@ -167,7 +171,7 @@ def refresh_factor_definition(
                 if partition_start_date > month_start:
                     existing_partition = _read_existing_month_partition(
                         store,
-                        storage_key=definition.storage_key,
+                        storage_key=indicator_definition.storage_key,
                         year=month_start.year,
                         month=month_start.month,
                     )
@@ -178,10 +182,10 @@ def refresh_factor_definition(
                         frame_to_write = _merge_partition_frames(
                             existing_partition,
                             output,
-                            output_columns=definition.output_columns,
+                            output_columns=indicator_definition.output_columns,
                         )
                 path = store.write_month_partition(
-                    storage_key=definition.storage_key,
+                    storage_key=indicator_definition.storage_key,
                     frame=frame_to_write,
                     year=month_start.year,
                     month=month_start.month,
@@ -201,10 +205,10 @@ def refresh_factor_definition(
             on_month_processed(month_start)
 
     return {
-        "factor_id": definition.factor_id,
-        "factor_name": definition.factor_name,
-        "version": definition.version,
-        "storage_key": definition.storage_key,
+        "indicator_id": indicator_definition.indicator_id,
+        "indicator_name": indicator_definition.indicator_name,
+        "version": indicator_definition.version,
+        "storage_key": indicator_definition.storage_key,
         "partitions_written": partitions_written,
         "rows_written": rows_written,
         "last_materialized_date": format_date(last_materialized_date),
@@ -213,15 +217,15 @@ def refresh_factor_definition(
 
 @app.command()
 def main(
-    factor_id: list[str] | None = typer.Option(
+    indicator_id: list[str] | None = typer.Option(
         None,
-        "--factor-id",
-        help="可重复指定；仅刷新这些 active 因子，例如 --factor-id ma_20 --factor-id macd_12_26_9",
+        "--indicator-id",
+        help="可重复指定；仅刷新这些 active 指标，例如 --indicator-id ma_20 --indicator-id macd_12_26_9",
     ),
     all_active: bool = typer.Option(
         False,
         "--all-active",
-        help="刷新 factor_definition 中全部 active 因子。",
+        help="刷新 indicator_definition 中全部 active 因子。",
     ),
     start_date: str = typer.Option(
         ...,
@@ -244,10 +248,12 @@ def main(
         help="为 true 时忽略 last_materialized_date 对起始日期的自动推进，按传入区间强制重算。",
     ),
 ) -> None:
-    if factor_id and all_active:
-        raise typer.BadParameter("--factor-id and --all-active cannot be used together")
-    if not factor_id and not all_active:
-        raise typer.BadParameter("please provide --factor-id or --all-active")
+    if indicator_id and all_active:
+        raise typer.BadParameter(
+            "--indicator-id and --all-active cannot be used together"
+        )
+    if not indicator_id and not all_active:
+        raise typer.BadParameter("please provide --indicator-id or --all-active")
 
     parsed_start = parse_date(start_date)
     parsed_end = parse_date(end_date) if end_date else parsed_start
@@ -255,12 +261,12 @@ def main(
         raise ValueError("start_date and end_date must be valid dates")
 
     resolved_db_path = resolve_project_path(DEFAULT_DB_PATH)
-    resolved_factor_root = resolve_project_path(DEFAULT_FACTOR_ROOT)
+    resolved_indicator_root = resolve_project_path(DEFAULT_INDICATOR_ROOT)
     database = SQLiteDatabase(resolved_db_path)
     results = refresh_factors(
         database,
-        resolved_factor_root,
-        factor_ids=None if all_active else factor_id,
+        resolved_indicator_root,
+        indicator_ids=None if all_active else indicator_id,
         start_date=parsed_start,
         end_date=parsed_end,
         instruments=instrument,
@@ -268,47 +274,49 @@ def main(
     )
     _emit_refresh_logs(
         results,
-        factor_ids=factor_id,
+        indicator_ids=indicator_id,
         all_active=all_active,
         start_date=parsed_start,
         end_date=parsed_end,
         instruments=instrument,
         force=force,
         db_path=resolved_db_path,
-        factor_root=resolved_factor_root,
+        indicator_root=resolved_indicator_root,
     )
     typer.echo(json.dumps(results, ensure_ascii=False, indent=2))
 
 
-def _load_definitions(
+def _load_indicator_definitions(
     repositories: RepositorySession,
-    factor_ids: list[str] | None,
-) -> list[FactorDefinition]:
-    if not factor_ids:
-        records = repositories.factor_definition.list_active()
-        return [_to_definition(record) for record in records]
+    indicator_ids: list[str] | None,
+) -> list[IndicatorDefinition]:
+    if not indicator_ids:
+        records = repositories.indicator_definition.list_active()
+        return [_to_indicator_definition(record) for record in records]
 
-    definitions: list[FactorDefinition] = []
+    indicator_definitions: list[IndicatorDefinition] = []
     seen: set[str] = set()
-    for factor_id in factor_ids:
-        normalized = factor_id.strip()
+    for indicator_id in indicator_ids:
+        normalized = indicator_id.strip()
         if not normalized or normalized in seen:
             continue
-        record = repositories.factor_definition.get(normalized)
+        record = repositories.indicator_definition.get(normalized)
         if record is None:
-            raise ValueError(f"factor definition not found: {normalized}")
+            raise ValueError(f"indicator definition not found: {normalized}")
         if record.status != "active":
-            raise ValueError(f"factor definition is not active: {normalized}")
-        definitions.append(_to_definition(record))
+            raise ValueError(f"indicator definition is not active: {normalized}")
+        indicator_definitions.append(_to_indicator_definition(record))
         seen.add(normalized)
-    return definitions
+    return indicator_definitions
 
 
-def _to_definition(record: FactorDefinitionRecord) -> FactorDefinition:
-    return FactorDefinition(
-        factor_id=record.factor_id,
+def _to_indicator_definition(
+    record: IndicatorDefinitionRecord,
+) -> IndicatorDefinition:
+    return IndicatorDefinition(
+        indicator_id=record.indicator_id,
         version=record.version,
-        factor_name=record.factor_name,
+        indicator_name=record.indicator_name,
         category=record.category,
         compute_ref=record.compute_ref,
         params=record.params,
@@ -323,17 +331,17 @@ def _to_definition(record: FactorDefinitionRecord) -> FactorDefinition:
 def _emit_refresh_logs(
     results: list[dict[str, Any]],
     *,
-    factor_ids: list[str] | None,
+    indicator_ids: list[str] | None,
     all_active: bool,
     start_date: date,
     end_date: date,
     instruments: list[str] | None,
     force: bool,
     db_path: Path,
-    factor_root: Path,
+    indicator_root: Path,
 ) -> None:
     refresh_mode = "all_active" if all_active else "selected"
-    target = ", ".join(factor_ids or []) if factor_ids else "ALL_ACTIVE"
+    target = ", ".join(indicator_ids or []) if indicator_ids else "ALL_ACTIVE"
     instrument_scope = ", ".join(instruments or []) if instruments else "ALL"
     typer.echo(
         (
@@ -341,7 +349,7 @@ def _emit_refresh_logs(
             f"mode={refresh_mode} target={target} "
             f"date_range={start_date.isoformat()}..{end_date.isoformat()} "
             f"force={force} instruments={instrument_scope} "
-            f"db_path={db_path} factor_root={factor_root}"
+            f"db_path={db_path} indicator_root={indicator_root}"
         ),
         err=True,
     )
@@ -355,7 +363,7 @@ def _emit_refresh_logs(
         typer.echo(
             (
                 "[refresh_factors] "
-                f"factor_id={result['factor_id']} version={result['version']} "
+                f"indicator_id={result['indicator_id']} version={result['version']} "
                 f"rows_written={result['rows_written']} partitions_written={partition_count} "
                 f"last_materialized_date={result['last_materialized_date']} "
                 f"storage_key={result['storage_key']}"
@@ -374,7 +382,7 @@ def _emit_refresh_logs(
 
 
 def _resolve_effective_start_date(
-    definition: FactorDefinition,
+    indicator_definition: IndicatorDefinition,
     start_date: date,
     end_date: date,
     *,
@@ -383,7 +391,7 @@ def _resolve_effective_start_date(
     if force:
         return start_date
 
-    last_materialized_date = parse_date(definition.last_materialized_date)
+    last_materialized_date = parse_date(indicator_definition.last_materialized_date)
     if last_materialized_date is None:
         return start_date
     if start_date < last_materialized_date < end_date:
@@ -392,14 +400,14 @@ def _resolve_effective_start_date(
 
 
 def _pending_month_ranges(
-    definition: FactorDefinition,
+    indicator_definition: IndicatorDefinition,
     start_date: date,
     end_date: date,
     *,
     force: bool = False,
 ) -> list[tuple[date, date, date]]:
     last_materialized_date = (
-        None if force else parse_date(definition.last_materialized_date)
+        None if force else parse_date(indicator_definition.last_materialized_date)
     )
     if last_materialized_date is None:
         return [
@@ -432,7 +440,7 @@ def _pending_month_ranges(
 
 
 def _read_existing_month_partition(
-    store: ParquetFactorStore,
+    store: IndicatorStore,
     *,
     storage_key: str,
     year: int,
@@ -468,11 +476,13 @@ def _merge_partition_frames(
     )
 
 
-def _validate_spec(definition: FactorDefinition, spec: FactorSpec) -> None:
-    if spec.output_columns != definition.output_columns:
+def _validate_spec(
+    indicator_definition: IndicatorDefinition, spec: IndicatorSpec
+) -> None:
+    if spec.output_columns != indicator_definition.output_columns:
         raise ValueError(
             "factor output columns do not match definition: "
-            f"expected={definition.output_columns}, actual={spec.output_columns}"
+            f"expected={indicator_definition.output_columns}, actual={spec.output_columns}"
         )
 
 
@@ -503,7 +513,7 @@ def _normalize_output_frame(
     )
 
 
-def _history_padding_days(spec: FactorSpec) -> int:
+def _history_padding_days(spec: IndicatorSpec) -> int:
     required = max(spec.required_history_bars, 0)
     if required == 0:
         return 0

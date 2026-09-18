@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Severity = Literal["warn", "reject"]
 BatchStatus = Literal["pending", "running", "success", "failed"]
-FactorDefinitionStatus = Literal["active", "deprecated", "disabled"]
-FactorCategory = Literal[
+IndicatorDefinitionStatus = Literal["active", "deprecated", "disabled"]
+IndicatorCategory = Literal[
     "trend",
     "momentum",
     "volatility",
@@ -139,30 +139,30 @@ class RawManifestRecord(BaseModel):
     records_sha256: str | None = None
 
 
-class FactorDefinitionRecord(BaseModel):
+class IndicatorDefinitionRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int | None = None
-    factor_id: str
+    indicator_id: str
     version: str = "v1"
-    factor_name: str
-    category: FactorCategory
+    indicator_name: str
+    category: IndicatorCategory
     compute_ref: str
     params: dict[str, Any] = Field(default_factory=dict)
     output_columns: list[str] = Field(default_factory=list)
     storage_key: str
     description: str | None = None
-    status: FactorDefinitionStatus = "active"
+    status: IndicatorDefinitionStatus = "active"
     last_materialized_date: str | None = None
     created_at: str
     updated_at: str
 
     @model_validator(mode="after")
-    def validate_definition(self) -> "FactorDefinitionRecord":
-        if not self.factor_id.strip():
-            raise ValueError("factor_id must not be empty")
-        if not self.factor_name.strip():
-            raise ValueError("factor_name must not be empty")
+    def validate_definition(self) -> "IndicatorDefinitionRecord":
+        if not self.indicator_id.strip():
+            raise ValueError("indicator_id must not be empty")
+        if not self.indicator_name.strip():
+            raise ValueError("indicator_name must not be empty")
         if not self.compute_ref.strip():
             raise ValueError("compute_ref must not be empty")
         if not self.storage_key.strip():

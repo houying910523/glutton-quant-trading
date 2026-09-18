@@ -3,7 +3,7 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from modules.datasource.pipeline.services.daily_quote import DailyQuotePipeline, Task
+from modules.datasource.pipeline.daily_quote import DailyQuotePipeline, Task
 from modules.utils.time_util import now_shanghai, parse_date
 from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
 

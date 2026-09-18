@@ -5,9 +5,9 @@ from typing import Any
 
 import polars as pl
 
-from modules.factors.base import Factor
-from modules.factors.builtin.common import rolling_mean
-from modules.factors.models import FactorSpec
+from modules.indicators.base import Indicator
+from modules.indicators.builtin.common import rolling_mean
+from modules.indicators.models import IndicatorSpec
 
 
 def _ema(values: Sequence[float | None], span: int) -> list[float | None]:
@@ -27,11 +27,11 @@ def _ema(values: Sequence[float | None], span: int) -> list[float | None]:
     return result
 
 
-class SimpleMovingAverageFactor(Factor):
-    def spec(self, params: dict[str, Any]) -> FactorSpec:
+class SimpleMovingAverageIndicator(Indicator):
+    def spec(self, params: dict[str, Any]) -> IndicatorSpec:
         window_list = params["window"]
         output_columns = [f"ma_{window}" for window in window_list]
-        return FactorSpec(
+        return IndicatorSpec(
             required_columns=["close"],
             required_history_bars=max(window_list),
             output_columns=output_columns,
@@ -66,13 +66,13 @@ class SimpleMovingAverageFactor(Factor):
         )
 
 
-class MacdFactor(Factor):
-    def spec(self, params: dict[str, Any]) -> FactorSpec:
+class MacdIndicator(Indicator):
+    def spec(self, params: dict[str, Any]) -> IndicatorSpec:
         fast = int(params["fast"])
         slow = int(params["slow"])
         signal = int(params["signal"])
         suffix = f"{fast}_{slow}_{signal}"
-        return FactorSpec(
+        return IndicatorSpec(
             required_columns=["close"],
             required_history_bars=max(slow + signal, slow * 2),
             output_columns=[

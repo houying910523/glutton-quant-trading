@@ -30,7 +30,7 @@ class ResearchStorageTest(unittest.TestCase):
             SQLiteSchemaManager(database).initialize()
             self._seed_market_data(database)
 
-            from modules.factors.storage import SQLiteMarketLoader
+            from modules.indicators.storage import SQLiteMarketLoader
 
             loader = SQLiteMarketLoader(database)
             frame = loader.load_daily_bars(
@@ -54,29 +54,29 @@ class ResearchStorageTest(unittest.TestCase):
 
     def test_path_resolver_and_parquet_factor_store(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
-            from modules.factors.storage import (
-                ParquetFactorStore,
+            from modules.indicators.storage import (
+                IndicatorStore,
                 resolve_dataset_root,
                 resolve_partition_path,
             )
 
             root = Path(tmp_dir)
-            factor_root = root / "factors"
-            store = ParquetFactorStore(factor_root)
+            indicator_root = root / "factors"
+            store = IndicatorStore(indicator_root)
             storage_key = "ma/v1/window_20"
 
-            dataset_root = resolve_dataset_root(factor_root, storage_key)
+            dataset_root = resolve_dataset_root(indicator_root, storage_key)
             partition_path = resolve_partition_path(
-                factor_root,
+                indicator_root,
                 storage_key,
                 year=2024,
                 month=1,
             )
 
-            self.assertEqual(dataset_root, factor_root / "ma" / "v1" / "window_20")
+            self.assertEqual(dataset_root, indicator_root / "ma" / "v1" / "window_20")
             self.assertEqual(
                 partition_path,
-                factor_root
+                indicator_root
                 / "ma"
                 / "v1"
                 / "window_20"

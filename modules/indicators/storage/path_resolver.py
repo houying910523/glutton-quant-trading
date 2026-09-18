@@ -15,12 +15,12 @@ def _normalize_storage_key(storage_key: str) -> Path:
     return candidate
 
 
-def resolve_dataset_root(factor_root: Path, storage_key: str) -> Path:
-    return Path(factor_root) / _normalize_storage_key(storage_key)
+def resolve_dataset_root(indicator_root: Path, storage_key: str) -> Path:
+    return Path(indicator_root) / _normalize_storage_key(storage_key)
 
 
 def resolve_partition_path(
-    factor_root: Path,
+    indicator_root: Path,
     storage_key: str,
     *,
     year: int,
@@ -31,16 +31,16 @@ def resolve_partition_path(
     if month < 1 or month > 12:
         raise ValueError("month must be between 1 and 12")
     return (
-        resolve_dataset_root(factor_root, storage_key)
+        resolve_dataset_root(indicator_root, storage_key)
         / f"year={year:04d}"
         / f"month={month:02d}"
         / "data.parquet"
     )
 
 
-def resolve_partition_glob(factor_root: Path, storage_key: str) -> str:
+def resolve_partition_glob(indicator_root: Path, storage_key: str) -> str:
     return str(
-        resolve_dataset_root(factor_root, storage_key)
+        resolve_dataset_root(indicator_root, storage_key)
         / "year=*"
         / "month=*"
         / "data.parquet"

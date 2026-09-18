@@ -5,12 +5,12 @@ from typing import Any, Literal
 from pydantic import BaseModel, ConfigDict, Field
 
 
-class FactorDefinition(BaseModel):
+class IndicatorDefinition(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    factor_id: str
+    indicator_id: str
     version: str = "v1"
-    factor_name: str
+    indicator_name: str
     category: Literal[
         "trend",
         "momentum",
@@ -27,7 +27,7 @@ class FactorDefinition(BaseModel):
     last_materialized_date: str | None = None
 
 
-class FactorSpec(BaseModel):
+class IndicatorSpec(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     required_columns: list[str] = Field(default_factory=list)

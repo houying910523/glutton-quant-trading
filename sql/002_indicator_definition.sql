@@ -1,8 +1,10 @@
-CREATE TABLE IF NOT EXISTS factor_definition (
+-- 指标定义表
+
+CREATE TABLE IF NOT EXISTS indicator_definition (
     id INTEGER PRIMARY KEY,
-    factor_id TEXT NOT NULL,
+    indicator_id TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT 'v1',
-    factor_name TEXT NOT NULL,
+    indicator_name TEXT NOT NULL,
     category TEXT NOT NULL,
     compute_ref TEXT NOT NULL,
     params TEXT NOT NULL DEFAULT '{}',
@@ -15,9 +17,9 @@ CREATE TABLE IF NOT EXISTS factor_definition (
     last_materialized_date TEXT,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
-    UNIQUE (factor_id, version),
+    UNIQUE (indicator_id, version),
     UNIQUE (storage_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_factor_definition_category_status
-ON factor_definition (category, status);
+CREATE INDEX IF NOT EXISTS idx_indicator_definition_category_status
+ON indicator_definition (category, status);
