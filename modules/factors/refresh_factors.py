@@ -37,6 +37,7 @@ def refresh_factors(
     start_date: date,
     end_date: date,
     instruments: list[str] | None = None,
+    force: bool = False,
 ) -> list[dict[str, Any]]:
     if start_date > end_date:
         raise ValueError("start_date must be <= end_date")
@@ -49,7 +50,19 @@ def refresh_factors(
         definitions = _load_definitions(repositories, factor_ids)
 
     total_months = sum(
-        len(_pending_month_starts(definition, start_date, end_date))
+        len(
+            _pending_month_ranges(
+                definition,
+                _resolve_effective_start_date(
+                    definition,
+                    start_date,
+                    end_date,
+                    force=force,
+                ),
+                end_date,
+                force=force,
+            )
+        )
         for definition in definitions
     )
     progress = tqdm(
@@ -85,13 +98,20 @@ def refresh_factors(
                     )
                 current_definition.last_materialized_date = formatted_date
 
+            effective_start_date = _resolve_effective_start_date(
+                definition,
+                start_date,
+                end_date,
+                force=force,
+            )
             result = refresh_factor_definition(
                 definition,
                 loader,
                 store,
-                start_date=start_date,
+                start_date=effective_start_date,
                 end_date=end_date,
                 instruments=instruments,
+                force=force,
                 on_month_processed=on_month_processed,
                 on_month_materialized=on_month_materialized,
             )
@@ -109,6 +129,7 @@ def refresh_factor_definition(
     start_date: date,
     end_date: date,
     instruments: list[str] | None = None,
+    force: bool = False,
     on_month_processed: Callable[[date], None] | None = None,
     on_month_materialized: Callable[[date], None] | None = None,
 ) -> dict[str, Any]:
@@ -119,10 +140,14 @@ def refresh_factor_definition(
     partitions_written: list[str] = []
     rows_written = 0
     last_materialized_date = parse_date(definition.last_materialized_date)
-    pending_month_starts = _pending_month_starts(definition, start_date, end_date)
-    for month_start in pending_month_starts:
-        partition_end_date = min(_month_end(month_start), end_date)
-        load_start = month_start - timedelta(days=_history_padding_days(spec))
+    pending_month_ranges = _pending_month_ranges(
+        definition,
+        start_date,
+        end_date,
+        force=force,
+    )
+    for month_start, partition_start_date, partition_end_date in pending_month_ranges:
+        load_start = partition_start_date - timedelta(days=_history_padding_days(spec))
         stock_daily = loader.load_stock_daily(
             start_date=load_start,
             end_date=partition_end_date,
@@ -134,13 +159,30 @@ def refresh_factor_definition(
             output = _normalize_output_frame(
                 computed,
                 output_columns=definition.output_columns,
-                start_date=month_start,
+                start_date=partition_start_date,
                 end_date=partition_end_date,
             )
             if not output.is_empty():
+                frame_to_write = output
+                if partition_start_date > month_start:
+                    existing_partition = _read_existing_month_partition(
+                        store,
+                        storage_key=definition.storage_key,
+                        year=month_start.year,
+                        month=month_start.month,
+                    )
+                    if (
+                        existing_partition is not None
+                        and not existing_partition.is_empty()
+                    ):
+                        frame_to_write = _merge_partition_frames(
+                            existing_partition,
+                            output,
+                            output_columns=definition.output_columns,
+                        )
                 path = store.write_month_partition(
                     storage_key=definition.storage_key,
-                    frame=output,
+                    frame=frame_to_write,
                     year=month_start.year,
                     month=month_start.month,
                 )
@@ -196,6 +238,11 @@ def main(
         "--instrument",
         help="可重复指定；仅刷新这些 instrument_id，例如 600519.SH。",
     ),
+    force: bool = typer.Option(
+        False,
+        "--force",
+        help="为 true 时忽略 last_materialized_date 对起始日期的自动推进，按传入区间强制重算。",
+    ),
 ) -> None:
     if factor_id and all_active:
         raise typer.BadParameter("--factor-id and --all-active cannot be used together")
@@ -217,6 +264,7 @@ def main(
         start_date=parsed_start,
         end_date=parsed_end,
         instruments=instrument,
+        force=force,
     )
     _emit_refresh_logs(
         results,
@@ -225,6 +273,7 @@ def main(
         start_date=parsed_start,
         end_date=parsed_end,
         instruments=instrument,
+        force=force,
         db_path=resolved_db_path,
         factor_root=resolved_factor_root,
     )
@@ -279,6 +328,7 @@ def _emit_refresh_logs(
     start_date: date,
     end_date: date,
     instruments: list[str] | None,
+    force: bool,
     db_path: Path,
     factor_root: Path,
 ) -> None:
@@ -290,7 +340,8 @@ def _emit_refresh_logs(
             "[refresh_factors] "
             f"mode={refresh_mode} target={target} "
             f"date_range={start_date.isoformat()}..{end_date.isoformat()} "
-            f"instruments={instrument_scope} db_path={db_path} factor_root={factor_root}"
+            f"force={force} instruments={instrument_scope} "
+            f"db_path={db_path} factor_root={factor_root}"
         ),
         err=True,
     )
@@ -322,19 +373,99 @@ def _emit_refresh_logs(
     )
 
 
-def _pending_month_starts(
+def _resolve_effective_start_date(
     definition: FactorDefinition,
     start_date: date,
     end_date: date,
-) -> list[date]:
+    *,
+    force: bool,
+) -> date:
+    if force:
+        return start_date
+
     last_materialized_date = parse_date(definition.last_materialized_date)
     if last_materialized_date is None:
-        return _iter_month_starts(start_date, end_date)
+        return start_date
+    if start_date < last_materialized_date < end_date:
+        return last_materialized_date
+    return start_date
+
+
+def _pending_month_ranges(
+    definition: FactorDefinition,
+    start_date: date,
+    end_date: date,
+    *,
+    force: bool = False,
+) -> list[tuple[date, date, date]]:
+    last_materialized_date = (
+        None if force else parse_date(definition.last_materialized_date)
+    )
+    if last_materialized_date is None:
+        return [
+            (
+                month_start,
+                month_start,
+                min(_month_end(month_start), end_date),
+            )
+            for month_start in _iter_month_starts(start_date, end_date)
+        ]
 
     resume_date = max(start_date, last_materialized_date + timedelta(days=1))
     if resume_date > end_date:
         return []
-    return _iter_month_starts(resume_date, end_date)
+
+    pending_ranges: list[tuple[date, date, date]] = []
+    first_month_start = date(resume_date.year, resume_date.month, 1)
+    for month_start in _iter_month_starts(resume_date, end_date):
+        partition_start_date = (
+            resume_date if month_start == first_month_start else month_start
+        )
+        pending_ranges.append(
+            (
+                month_start,
+                partition_start_date,
+                min(_month_end(month_start), end_date),
+            )
+        )
+    return pending_ranges
+
+
+def _read_existing_month_partition(
+    store: ParquetFactorStore,
+    *,
+    storage_key: str,
+    year: int,
+    month: int,
+) -> pl.DataFrame | None:
+    path = store.partition_path(storage_key, year=year, month=month)
+    if not path.exists():
+        return None
+    return pl.read_parquet(path)
+
+
+def _merge_partition_frames(
+    existing: pl.DataFrame,
+    updates: pl.DataFrame,
+    *,
+    output_columns: list[str],
+) -> pl.DataFrame:
+    expected_columns = ["trade_date", "instrument_id", *output_columns]
+    return (
+        pl.concat(
+            [
+                existing.select(expected_columns),
+                updates.select(expected_columns),
+            ],
+            how="vertical_relaxed",
+        )
+        .sort(["trade_date", "instrument_id"])
+        .unique(
+            subset=["trade_date", "instrument_id"],
+            keep="last",
+            maintain_order=True,
+        )
+    )
 
 
 def _validate_spec(definition: FactorDefinition, spec: FactorSpec) -> None:

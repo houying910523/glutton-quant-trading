@@ -117,6 +117,95 @@ class RefreshFactorsTest(unittest.TestCase):
             frame = store.read_dataset(storage_key="ma/v1/window_20")
             self.assertEqual(frame.height, 41)
 
+    def test_refresh_factors_resumes_from_last_materialized_date_within_month(
+        self,
+    ) -> None:
+        from modules.factors.refresh_factors import refresh_factors
+        from modules.factors.storage import ParquetFactorStore
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            database = SQLiteDatabase(root / "glutton.db")
+            factor_root = root / "research" / "factors"
+            SQLiteSchemaManager(database).initialize()
+            self._seed_market_data(
+                database,
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 2, 10),
+            )
+
+            refresh_factors(
+                database,
+                factor_root,
+                factor_ids=["ma_20"],
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 1, 25),
+                instruments=["600519.SH"],
+            )
+            results = refresh_factors(
+                database,
+                factor_root,
+                factor_ids=["ma_20"],
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 2, 10),
+                instruments=["600519.SH"],
+            )
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["rows_written"], 16)
+            self.assertEqual(len(results[0]["partitions_written"]), 2)
+            self.assertEqual(results[0]["last_materialized_date"], "2024-02-10")
+
+            store = ParquetFactorStore(factor_root)
+            frame = store.read_dataset(storage_key="ma/v1/window_20")
+            self.assertEqual(frame.height, 41)
+            january_frame = frame.filter(
+                pl.col("trade_date") <= pl.lit(date(2024, 1, 31))
+            )
+            self.assertEqual(january_frame.height, 31)
+
+    def test_refresh_factors_force_recomputes_requested_range(self) -> None:
+        from modules.factors.refresh_factors import refresh_factors
+        from modules.factors.storage import ParquetFactorStore
+
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            database = SQLiteDatabase(root / "glutton.db")
+            factor_root = root / "research" / "factors"
+            SQLiteSchemaManager(database).initialize()
+            self._seed_market_data(
+                database,
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 2, 10),
+            )
+
+            refresh_factors(
+                database,
+                factor_root,
+                factor_ids=["ma_20"],
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 1, 25),
+                instruments=["600519.SH"],
+            )
+            results = refresh_factors(
+                database,
+                factor_root,
+                factor_ids=["ma_20"],
+                start_date=date(2024, 1, 1),
+                end_date=date(2024, 2, 10),
+                instruments=["600519.SH"],
+                force=True,
+            )
+
+            self.assertEqual(len(results), 1)
+            self.assertEqual(results[0]["rows_written"], 41)
+            self.assertEqual(len(results[0]["partitions_written"]), 2)
+            self.assertEqual(results[0]["last_materialized_date"], "2024-02-10")
+
+            store = ParquetFactorStore(factor_root)
+            frame = store.read_dataset(storage_key="ma/v1/window_20")
+            self.assertEqual(frame.height, 41)
+
     def test_refresh_factors_persists_monthly_progress_before_later_failure(
         self,
     ) -> None:
