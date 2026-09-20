@@ -11,12 +11,17 @@ from modules.repositories.models import IndicatorDefinitionRecord
 from modules.repositories.schema import SQLiteSchemaManager
 
 
-class IndicatorDefinitionRepositoryTest(unittest.TestCase):
-    def test_schema_initializes_builtin_seed_definitions(self) -> None:
+def _initialize_database(root: Path) -> SQLiteDatabase:
+    database = SQLiteDatabase(root / "glutton.db")
+    SQLiteSchemaManager(database).initialize()
+    return database
+
+
+class SQLiteSchemaManagerInitializeTest(unittest.TestCase):
+    def test_initialize_seeds_builtin_indicator_definitions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            database = SQLiteDatabase(root / "glutton.db")
-            SQLiteSchemaManager(database).initialize()
+            database = _initialize_database(root)
 
             with RepositorySession(database) as repositories:
                 definitions = repositories.indicator_definition.list_active()
@@ -26,11 +31,12 @@ class IndicatorDefinitionRepositoryTest(unittest.TestCase):
                 ["ma_5_10_20_30_60_120", "macd_12_26_9", "boll_20_2"],
             )
 
-    def test_upsert_and_get_definition(self) -> None:
+
+class IndicatorDefinitionRepositoryUpsertTest(unittest.TestCase):
+    def test_upsert_persists_definition_that_can_be_fetched(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            database = SQLiteDatabase(root / "glutton.db")
-            SQLiteSchemaManager(database).initialize()
+            database = _initialize_database(root)
             now = format_timestamp()
 
             record = IndicatorDefinitionRecord(
@@ -67,11 +73,12 @@ class IndicatorDefinitionRepositoryTest(unittest.TestCase):
             self.assertEqual(fetched.storage_key, "ma/v1/window_20")
             self.assertIsNone(fetched.last_materialized_date)
 
-    def test_set_last_materialized_date(self) -> None:
+
+class IndicatorDefinitionRepositorySetLastMaterializedDateTest(unittest.TestCase):
+    def test_set_last_materialized_date_updates_definition(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            database = SQLiteDatabase(root / "glutton.db")
-            SQLiteSchemaManager(database).initialize()
+            database = _initialize_database(root)
 
             with RepositorySession(database, transactional=True) as repositories:
                 repositories.indicator_definition.set_last_materialized_date(
@@ -89,11 +96,12 @@ class IndicatorDefinitionRepositoryTest(unittest.TestCase):
             assert fetched is not None
             self.assertEqual(fetched.last_materialized_date, "2024-01-25")
 
+
+class IndicatorDefinitionRepositoryListActiveTest(unittest.TestCase):
     def test_list_active_filters_disabled_definitions(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
-            database = SQLiteDatabase(root / "glutton.db")
-            SQLiteSchemaManager(database).initialize()
+            database = _initialize_database(root)
             now = format_timestamp()
 
             records = [
@@ -132,15 +140,60 @@ class IndicatorDefinitionRepositoryTest(unittest.TestCase):
 
             with RepositorySession(database) as repositories:
                 active = repositories.indicator_definition.list_active()
-                trend = repositories.indicator_definition.list_by_category("trend")
-                momentum_all = repositories.indicator_definition.list_by_category(
-                    "momentum", active_only=False
-                )
 
             self.assertEqual(
                 [item.indicator_id for item in active],
                 ["ma_20", "ma_5_10_20_30_60_120", "macd_12_26_9", "boll_20_2"],
             )
+
+
+class IndicatorDefinitionRepositoryListByCategoryTest(unittest.TestCase):
+    def test_list_by_category_returns_active_or_all_records(self) -> None:
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            root = Path(tmp_dir)
+            database = _initialize_database(root)
+            now = format_timestamp()
+
+            records = [
+                IndicatorDefinitionRecord(
+                    indicator_id="ma_20",
+                    version="v1",
+                    indicator_name="20日均线",
+                    category="trend",
+                    compute_ref=(
+                        "modules.indicators.builtin.trend:SimpleMovingAverageFactor"
+                    ),
+                    params={"window": 20},
+                    output_columns=["ma_20"],
+                    storage_key="ma/v1/window_20",
+                    status="active",
+                    created_at=now,
+                    updated_at=now,
+                ),
+                IndicatorDefinitionRecord(
+                    indicator_id="rsi_14",
+                    version="v1",
+                    indicator_name="RSI(14)",
+                    category="momentum",
+                    compute_ref="modules.indicators.builtin.momentum:RsiFactor",
+                    params={"window": 14},
+                    output_columns=["rsi_14"],
+                    storage_key="rsi/v1/window_14",
+                    status="disabled",
+                    created_at=now,
+                    updated_at=now,
+                ),
+            ]
+
+            with RepositorySession(database, transactional=True) as repositories:
+                repositories.indicator_definition.upsert_many(records)
+
+            with RepositorySession(database) as repositories:
+                trend = repositories.indicator_definition.list_by_category("trend")
+                momentum_all = repositories.indicator_definition.list_by_category(
+                    "momentum", active_only=False
+                )
+
             self.assertEqual(
                 [item.indicator_id for item in trend],
                 ["ma_20", "ma_5_10_20_30_60_120", "macd_12_26_9"],

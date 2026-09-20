@@ -58,8 +58,12 @@ class FakeDailyQuoteFetcher:
         ]
 
 
-class DailyQuotePipelineIncrementalTest(unittest.TestCase):
-    def test_run_syncs_full_history_for_symbol_without_dates(self) -> None:
+class DailyQuotePipelineRunTest(unittest.TestCase):
+    @patch("modules.datasource.adaptors.base.create_stock_daily_quote_fetcher")
+    def test_run_syncs_full_history_for_symbol_without_dates(
+        self,
+        mock_create_stock_daily_quote_fetcher,
+    ) -> None:
         with self._context() as ctx:
             stock_id = self._seed_stock(
                 ctx.database,
@@ -73,12 +77,9 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
             fetcher = FakeDailyQuoteFetcher(
                 {"600519": ["2024-08-26", "2024-08-27", "2024-08-29"]}
             )
+            mock_create_stock_daily_quote_fetcher.return_value = fetcher
 
-            with patch(
-                "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
-                return_value=fetcher,
-            ):
-                result = ctx.pipeline.run("akshare", symbol="600519")
+            result = ctx.pipeline.run("akshare", symbol="600519")
 
             self.assertEqual(result.status, "success")
             self.assertEqual(result.sync_mode, "incremental")
@@ -97,7 +98,11 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                     ["2024-08-26", "2024-08-27", "2024-08-29"],
                 )
 
-    def test_run_starts_from_next_day_for_existing_stock_id(self) -> None:
+    @patch("modules.datasource.adaptors.base.create_stock_daily_quote_fetcher")
+    def test_run_starts_from_next_day_for_existing_stock_id(
+        self,
+        mock_create_stock_daily_quote_fetcher,
+    ) -> None:
         with self._context() as ctx:
             stock_id = self._seed_stock(
                 ctx.database,
@@ -114,12 +119,9 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                 trade_dates=["2024-08-26", "2024-08-27"],
             )
             fetcher = FakeDailyQuoteFetcher({"600519": ["2024-08-28", "2024-08-29"]})
+            mock_create_stock_daily_quote_fetcher.return_value = fetcher
 
-            with patch(
-                "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
-                return_value=fetcher,
-            ):
-                result = ctx.pipeline.run("akshare", stock_id=stock_id)
+            result = ctx.pipeline.run("akshare", stock_id=stock_id)
 
             self.assertEqual(result.status, "success")
             self.assertEqual(result.loaded_count, 2)
@@ -137,7 +139,11 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                     ["2024-08-26", "2024-08-27", "2024-08-28", "2024-08-29"],
                 )
 
-    def test_run_continues_from_latest_day_even_if_older_history_has_gap(self) -> None:
+    @patch("modules.datasource.adaptors.base.create_stock_daily_quote_fetcher")
+    def test_run_continues_from_latest_day_even_if_older_history_has_gap(
+        self,
+        mock_create_stock_daily_quote_fetcher,
+    ) -> None:
         with self._context() as ctx:
             stock_id = self._seed_stock(
                 ctx.database,
@@ -154,12 +160,9 @@ class DailyQuotePipelineIncrementalTest(unittest.TestCase):
                 trade_dates=["2024-08-26", "2024-08-28"],
             )
             fetcher = FakeDailyQuoteFetcher({"600519": ["2024-08-29"]})
+            mock_create_stock_daily_quote_fetcher.return_value = fetcher
 
-            with patch(
-                "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
-                return_value=fetcher,
-            ):
-                result = ctx.pipeline.run("akshare", symbol="600519")
+            result = ctx.pipeline.run("akshare", symbol="600519")
 
             self.assertEqual(result.status, "success")
             self.assertEqual(result.loaded_count, 1)

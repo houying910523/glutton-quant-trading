@@ -1,15 +1,13 @@
-from .base import AdapterType
-from .akshare import (
-    AkshareClient,
-    AkshareDailyQuoteAdapter,
-    AkshareStockAdapter,
-    AkshareTradingCalendarAdapter,
+from .base import (
+    AdapterType,
+    create_stock_daily_quote_fetcher,
+    create_stock_fetcher,
+    create_trading_calendar_fetcher,
 )
 
 __all__ = [
     "AdapterType",
-    "AkshareClient",
-    "AkshareDailyQuoteAdapter",
-    "AkshareStockAdapter",
-    "AkshareTradingCalendarAdapter",
+    "create_stock_daily_quote_fetcher",
+    "create_stock_fetcher",
+    "create_trading_calendar_fetcher",
 ]

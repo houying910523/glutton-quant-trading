@@ -14,25 +14,39 @@ from modules.datasource.adaptors.base import (
 )
 
 
-class AdapterFactoryTest(unittest.TestCase):
-    def test_factory_returns_akshare_fetchers(self) -> None:
+class CreateStockFetcherTest(unittest.TestCase):
+    def test_create_stock_fetcher_returns_akshare_fetcher(self) -> None:
         self.assertIsInstance(create_stock_fetcher("akshare"), AkshareStockAdapter)
+
+    def test_create_stock_fetcher_rejects_unsupported_adapter_type(self) -> None:
+        with self.assertRaisesRegex(Exception, "unsupported adapter type: tushare"):
+            create_stock_fetcher("tushare")
+
+
+class CreateTradingCalendarFetcherTest(unittest.TestCase):
+    def test_create_trading_calendar_fetcher_returns_akshare_fetcher(self) -> None:
         self.assertIsInstance(
             create_trading_calendar_fetcher("akshare"),
             AkshareTradingCalendarAdapter,
         )
+
+    def test_create_trading_calendar_fetcher_rejects_unsupported_adapter_type(
+        self,
+    ) -> None:
+        with self.assertRaisesRegex(Exception, "unsupported adapter type: tushare"):
+            create_trading_calendar_fetcher("tushare")
+
+
+class CreateStockDailyQuoteFetcherTest(unittest.TestCase):
+    def test_create_stock_daily_quote_fetcher_returns_akshare_fetcher(self) -> None:
         self.assertIsInstance(
             create_stock_daily_quote_fetcher("akshare"),
             AkshareDailyQuoteAdapter,
         )
 
-    def test_factory_rejects_unsupported_adapter_type(self) -> None:
-        with self.assertRaisesRegex(Exception, "unsupported adapter type: tushare"):
-            create_stock_fetcher("tushare")
-
-        with self.assertRaisesRegex(Exception, "unsupported adapter type: tushare"):
-            create_trading_calendar_fetcher("tushare")
-
+    def test_create_stock_daily_quote_fetcher_rejects_unsupported_adapter_type(
+        self,
+    ) -> None:
         with self.assertRaisesRegex(Exception, "unsupported adapter type: tushare"):
             create_stock_daily_quote_fetcher("tushare")
 

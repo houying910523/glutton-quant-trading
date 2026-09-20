@@ -5,7 +5,7 @@ import json
 import typer
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.jobs.common import JobRuntime
+from modules.datasource.scripts.common import JobRuntime
 from modules.datasource.pipeline import TradingCalendarPipeline
 
 app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)

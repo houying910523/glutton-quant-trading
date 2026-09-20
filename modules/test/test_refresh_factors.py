@@ -26,8 +26,8 @@ from modules.repositories.schema import SQLiteSchemaManager
 @unittest.skipIf(pl is None, "polars is not installed")
 class RefreshFactorsTest(unittest.TestCase):
     def test_refresh_factors_materializes_month_partition(self) -> None:
-        from modules.indicators.refresh_factors import refresh_factors
-        from modules.indicators.storage import IndicatorStore
+        from modules.indicators.scripts.refresh_indicators import refresh_factors
+        from modules.indicators.storage.indicator_store import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -70,8 +70,8 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertAlmostEqual(float(latest["ma_20"][0]), 15.5)
 
     def test_refresh_factors_resumes_from_last_materialized_month(self) -> None:
-        from modules.indicators.refresh_factors import refresh_factors
-        from modules.indicators.storage import IndicatorStore
+        from modules.indicators.scripts.refresh_indicators import refresh_factors
+        from modules.indicators.storage.indicator_store import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -120,8 +120,8 @@ class RefreshFactorsTest(unittest.TestCase):
     def test_refresh_factors_resumes_from_last_materialized_date_within_month(
         self,
     ) -> None:
-        from modules.indicators.refresh_factors import refresh_factors
-        from modules.indicators.storage import IndicatorStore
+        from modules.indicators.scripts.refresh_indicators import refresh_factors
+        from modules.indicators.storage.indicator_store import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -165,8 +165,8 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(january_frame.height, 31)
 
     def test_refresh_factors_force_recomputes_requested_range(self) -> None:
-        from modules.indicators.refresh_factors import refresh_factors
-        from modules.indicators.storage import IndicatorStore
+        from modules.indicators.scripts.refresh_indicators import refresh_factors
+        from modules.indicators.storage.indicator_store import IndicatorStore
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -206,11 +206,15 @@ class RefreshFactorsTest(unittest.TestCase):
             frame = store.read_dataset(storage_key="ma/v1/window_20")
             self.assertEqual(frame.height, 41)
 
+    @patch(
+        "modules.indicators.storage.indicator_store.IndicatorStore.write_month_partition",
+        autospec=True,
+    )
     def test_refresh_factors_persists_monthly_progress_before_later_failure(
         self,
+        mock_write_month_partition,
     ) -> None:
-        from modules.indicators.refresh_factors import refresh_factors
-        from modules.indicators.storage import IndicatorStore
+        from modules.indicators.scripts.refresh_indicators import refresh_factors
 
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
@@ -223,37 +227,29 @@ class RefreshFactorsTest(unittest.TestCase):
                 end_date=date(2024, 2, 10),
             )
 
-            original_write_month_partition = IndicatorStore.write_month_partition
             call_count = 0
 
-            def fail_on_second_month(self, *, storage_key, frame, year, month):
+            def fail_on_second_month(store, *, storage_key, frame, year, month):
                 nonlocal call_count
                 call_count += 1
                 if call_count == 2:
                     raise RuntimeError("simulated failure")
-                return original_write_month_partition(
-                    self,
-                    storage_key=storage_key,
-                    frame=frame,
-                    year=year,
-                    month=month,
-                )
+                path = store.partition_path(storage_key, year=year, month=month)
+                path.parent.mkdir(parents=True, exist_ok=True)
+                frame.write_parquet(path)
+                return path
 
-            with patch.object(
-                IndicatorStore,
-                "write_month_partition",
-                autospec=True,
-                side_effect=fail_on_second_month,
-            ):
-                with self.assertRaisesRegex(RuntimeError, "simulated failure"):
-                    refresh_factors(
-                        database,
-                        indicator_root,
-                        indicator_ids=["ma_20"],
-                        start_date=date(2024, 1, 1),
-                        end_date=date(2024, 2, 10),
-                        instruments=["600519.SH"],
-                    )
+            mock_write_month_partition.side_effect = fail_on_second_month
+
+            with self.assertRaisesRegex(RuntimeError, "simulated failure"):
+                refresh_factors(
+                    database,
+                    indicator_root,
+                    indicator_ids=["ma_20"],
+                    start_date=date(2024, 1, 1),
+                    end_date=date(2024, 2, 10),
+                    instruments=["600519.SH"],
+                )
 
             with RepositorySession(database) as repositories:
                 indicator_definition = repositories.indicator_definition.get("ma_20")

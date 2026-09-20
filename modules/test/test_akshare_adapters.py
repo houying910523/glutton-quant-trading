@@ -111,24 +111,24 @@ class FakeAkshareClient:
         )
 
 
-class AkshareAdapterTest(unittest.TestCase):
-    def test_disable_stock_hist_tx_tqdm_replaces_progress_wrapper(self) -> None:
-        with patch(
-            "modules.datasource.adaptors.akshare._AKSHARE_STOCK_HIST_TX_TQDM_DISABLED",
-            False,
-        ):
-            original_get_tqdm = stock_hist_tx.get_tqdm
-            try:
-                stock_hist_tx.get_tqdm = lambda enable=True: "original"
+class DisableAkshareStockHistTxTqdmTest(unittest.TestCase):
+    @patch(
+        "modules.datasource.adaptors.akshare._AKSHARE_STOCK_HIST_TX_TQDM_DISABLED",
+        False,
+    )
+    @patch.object(stock_hist_tx, "get_tqdm", return_value="original")
+    def test_disable_akshare_stock_hist_tx_tqdm_replaces_progress_wrapper(
+        self,
+        _mock_get_tqdm,
+    ) -> None:
+        _disable_akshare_stock_hist_tx_tqdm()
 
-                _disable_akshare_stock_hist_tx_tqdm()
+        wrapped = stock_hist_tx.get_tqdm()
+        self.assertEqual(list(wrapped([1, 2, 3])), [1, 2, 3])
 
-                wrapped = stock_hist_tx.get_tqdm()
-                self.assertEqual(list(wrapped([1, 2, 3])), [1, 2, 3])
-            finally:
-                stock_hist_tx.get_tqdm = original_get_tqdm
 
-    def test_stock_adapter_fetches_active_and_delisted_records(self) -> None:
+class AkshareStockAdapterFetchTest(unittest.TestCase):
+    def test_fetch_returns_active_and_delisted_records(self) -> None:
         client = FakeAkshareClient()
         adapter = AkshareStockAdapter()
         adapter._client = client
@@ -144,7 +144,9 @@ class AkshareAdapterTest(unittest.TestCase):
             },
         )
 
-    def test_trading_calendar_adapter_returns_open_dates(self) -> None:
+
+class AkshareTradingCalendarAdapterFetchTest(unittest.TestCase):
+    def test_fetch_returns_open_dates(self) -> None:
         client = FakeAkshareClient()
         adapter = AkshareTradingCalendarAdapter()
         adapter._client = client
@@ -153,7 +155,9 @@ class AkshareAdapterTest(unittest.TestCase):
 
         self.assertEqual(records, ["2024-08-26", "2024-08-27"])
 
-    def test_daily_quote_adapter_fetches_single_symbol_history(self) -> None:
+
+class AkshareDailyQuoteAdapterFetchTest(unittest.TestCase):
+    def test_fetch_returns_single_symbol_history(self) -> None:
         client = FakeAkshareClient()
         adapter = AkshareDailyQuoteAdapter()
         adapter._client = client

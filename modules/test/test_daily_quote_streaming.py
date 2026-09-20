@@ -54,8 +54,14 @@ class FakeProgressBar:
         self.closed = True
 
 
-class DailyQuoteDispatchTest(unittest.TestCase):
-    def test_parallel_process_yields_record_batches_for_each_task(self) -> None:
+class ParallelProcessDailyQuoteTest(unittest.TestCase):
+    @patch("tqdm.tqdm")
+    @patch("modules.datasource.adaptors.base.create_stock_daily_quote_fetcher")
+    def test_parallel_process_daily_quote_yields_record_batches_for_each_task(
+        self,
+        mock_create_stock_daily_quote_fetcher,
+        mock_tqdm,
+    ) -> None:
         batch = IngestionBatchRecord(
             id=42,
             batch_key="daily_quote_2026-09-05_001",
@@ -101,20 +107,16 @@ class DailyQuoteDispatchTest(unittest.TestCase):
             progress_bars.append(progress_bar)
             return progress_bar
 
-        with (
-            patch(
-                "modules.datasource.adaptors.base.create_stock_daily_quote_fetcher",
-                return_value=fetcher,
-            ),
-            patch("tqdm.tqdm", side_effect=create_progress_bar),
-        ):
-            yielded = list(
-                DailyQuotePipeline._parallel_process_daily_quote(
-                    "akshare",
-                    tasks,
-                    batch,
-                )
+        mock_create_stock_daily_quote_fetcher.return_value = fetcher
+        mock_tqdm.side_effect = create_progress_bar
+
+        yielded = list(
+            DailyQuotePipeline._parallel_process_daily_quote(
+                "akshare",
+                tasks,
+                batch,
             )
+        )
 
         self.assertEqual(len(yielded), 2)
         self.assertEqual(

@@ -5,7 +5,7 @@ import json
 import typer
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.jobs.common import JobRuntime
+from modules.datasource.scripts.common import JobRuntime
 from modules.datasource.pipeline import StockPipeline
 
 app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
@@ -26,6 +26,7 @@ def main(
                 "batch_id": result.id,
                 "batch_key": result.batch_key,
                 "status": result.status,
+                "row_count_raw": result.raw_count,
                 "row_count_loaded": result.loaded_count,
                 "row_count_rejected": result.rejected_count,
             },

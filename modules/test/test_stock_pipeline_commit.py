@@ -43,19 +43,17 @@ class FailingStockFetcher:
         raise RuntimeError("boom")
 
 
-class StockPipelineCommitTest(unittest.TestCase):
-    def test_run_commits_upserted_stocks(self) -> None:
+class StockPipelineRunTest(unittest.TestCase):
+    @patch("modules.datasource.adaptors.base.create_stock_fetcher")
+    def test_run_commits_upserted_stocks(self, mock_create_stock_fetcher) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
             SQLiteSchemaManager(database).initialize()
             pipeline = StockPipeline(database, RawStore(root / "raw"))
+            mock_create_stock_fetcher.return_value = FakeStockFetcher()
 
-            with patch(
-                "modules.datasource.adaptors.base.create_stock_fetcher",
-                return_value=FakeStockFetcher(),
-            ):
-                result = pipeline.run("akshare", sync_mode="full")
+            result = pipeline.run("akshare", sync_mode="full")
 
             self.assertEqual(result.status, "success")
             self.assertEqual(result.loaded_count, 1)
@@ -65,19 +63,20 @@ class StockPipelineCommitTest(unittest.TestCase):
                 )
             self.assertIn(("CN", "SSE", "600519"), rows)
 
-    def test_run_preserves_original_error_when_fetch_fails(self) -> None:
+    @patch("modules.datasource.adaptors.base.create_stock_fetcher")
+    def test_run_preserves_original_error_when_fetch_fails(
+        self,
+        mock_create_stock_fetcher,
+    ) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
             SQLiteSchemaManager(database).initialize()
             pipeline = StockPipeline(database, RawStore(root / "raw"))
+            mock_create_stock_fetcher.return_value = FailingStockFetcher()
 
-            with patch(
-                "modules.datasource.adaptors.base.create_stock_fetcher",
-                return_value=FailingStockFetcher(),
-            ):
-                with self.assertRaisesRegex(PipelineExecutionError, "boom"):
-                    pipeline.run("akshare", sync_mode="full")
+            with self.assertRaisesRegex(PipelineExecutionError, "boom"):
+                pipeline.run("akshare", sync_mode="full")
 
 
 if __name__ == "__main__":
