@@ -1,14 +1,12 @@
 from __future__ import annotations
 
-import math
 
 from modules.repositories.models import DailyQuoteRecord
 from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
-from modules.repositories.ingestion_batch_repository import BatchRepository
 
 
-class DailyQuoteRepository(SQLiteRepository):
+class StockDailyRepository(SQLiteRepository):
     def upsert_many(self, records: list[DailyQuoteRecord]) -> None:
         payload = [
             (
@@ -19,6 +17,7 @@ class DailyQuoteRepository(SQLiteRepository):
                 record.low,
                 record.close,
                 record.volume,
+                record.amount,
                 record.turnover,
                 record.ingestion_batch_id,
                 record.ingested_at.strftime("%Y-%m-%d %H:%M:%S"),
@@ -30,9 +29,9 @@ class DailyQuoteRepository(SQLiteRepository):
             return
         self._connection.executemany(
             """
-            INSERT INTO daily_quote (
+            INSERT INTO stock_daily (
                 stock_id, trade_date, open, high, low, close,
-                volume, turnover, ingestion_batch_id, ingested_at, updated_at
+                volume, amount, turnover, ingestion_batch_id, ingested_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(stock_id, trade_date) DO UPDATE SET
                 open = excluded.open,
@@ -40,6 +39,7 @@ class DailyQuoteRepository(SQLiteRepository):
                 low = excluded.low,
                 close = excluded.close,
                 volume = excluded.volume,
+                amount = excluded.amount,
                 turnover = excluded.turnover,
                 ingestion_batch_id = excluded.ingestion_batch_id,
                 ingested_at = excluded.ingested_at,
@@ -52,7 +52,7 @@ class DailyQuoteRepository(SQLiteRepository):
         rows = self._connection.execute(
             """
             SELECT DISTINCT trade_date
-            FROM daily_quote
+            FROM stock_daily
             WHERE trade_date BETWEEN ? AND ?
             """,
             (start_date, end_date),
@@ -63,7 +63,7 @@ class DailyQuoteRepository(SQLiteRepository):
         row = self._connection.execute(
             """
             SELECT MAX(trade_date) AS trade_date
-            FROM daily_quote
+            FROM stock_daily
             WHERE stock_id = ?
             """,
             (stock_id,),
@@ -82,7 +82,7 @@ class DailyQuoteRepository(SQLiteRepository):
         rows = self._connection.execute(
             """
             SELECT trade_date
-            FROM daily_quote
+            FROM stock_daily
             WHERE stock_id = ?
               AND trade_date BETWEEN ? AND ?
             ORDER BY trade_date ASC
@@ -90,16 +90,3 @@ class DailyQuoteRepository(SQLiteRepository):
             (stock_id, start_date, end_date),
         ).fetchall()
         return [row["trade_date"] for row in rows]
-
-    def calculate_coverage_threshold(
-        self,
-        *,
-        before_trade_date: str,
-        batch_repository: BatchRepository,
-    ) -> int | None:
-        baseline = batch_repository.recent_success_row_count_median(
-            before_trade_date=before_trade_date,
-        )
-        if baseline is None:
-            return None
-        return math.floor(baseline * 0.98)

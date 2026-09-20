@@ -5,7 +5,6 @@ import json
 import typer
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.scripts.common import JobRuntime
 from modules.datasource.pipeline import TradingCalendarPipeline
 
 app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
@@ -19,8 +18,10 @@ def main(
         "akshare", "--adapter", help="选择数据源 adapter"
     ),
 ) -> None:
-    runtime = JobRuntime()
-    pipeline = TradingCalendarPipeline(runtime.database, runtime.raw_store)
+    from modules.app import App
+
+    runtime = App()
+    pipeline = TradingCalendarPipeline(runtime.database)
     result = pipeline.run(
         adapter,
         start_date=start_date,

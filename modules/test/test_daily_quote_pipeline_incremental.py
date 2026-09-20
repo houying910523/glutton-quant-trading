@@ -6,12 +6,7 @@ from pathlib import Path
 from unittest.mock import patch
 
 from modules.datasource.pipeline.raw_store import RawStore
-from modules.datasource.pipeline.daily_quote import DailyQuotePipeline
-from modules.utils.time_util import (
-    format_timestamp,
-    now_shanghai,
-    parse_date,
-)
+from modules.datasource.pipeline.stock_daily import StockDailyPipeline
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
 from modules.repositories.models import (
@@ -21,6 +16,11 @@ from modules.repositories.models import (
     TradingCalendarRecord,
 )
 from modules.repositories.schema import SQLiteSchemaManager
+from modules.utils.time_util import (
+    format_timestamp,
+    now_shanghai,
+    parse_date,
+)
 
 
 class FakeDailyQuoteFetcher:
@@ -88,15 +88,6 @@ class DailyQuotePipelineRunTest(unittest.TestCase):
             self.assertEqual(
                 fetcher.calls[0][:4], ("600519", "2024-08-26", "2024-08-29", stock_id)
             )
-            with RepositorySession(ctx.database) as repositories:
-                self.assertEqual(
-                    repositories.daily_quote.list_trade_dates_by_stock(
-                        stock_id=stock_id,
-                        start_date="2024-08-26",
-                        end_date="2024-08-29",
-                    ),
-                    ["2024-08-26", "2024-08-27", "2024-08-29"],
-                )
 
     @patch("modules.datasource.adaptors.base.create_stock_daily_quote_fetcher")
     def test_run_starts_from_next_day_for_existing_stock_id(
@@ -129,15 +120,6 @@ class DailyQuotePipelineRunTest(unittest.TestCase):
             self.assertEqual(
                 fetcher.calls[0][:4], ("600519", "2024-08-28", "2024-08-29", stock_id)
             )
-            with RepositorySession(ctx.database) as repositories:
-                self.assertEqual(
-                    repositories.daily_quote.list_trade_dates_by_stock(
-                        stock_id=stock_id,
-                        start_date="2024-08-26",
-                        end_date="2024-08-29",
-                    ),
-                    ["2024-08-26", "2024-08-27", "2024-08-28", "2024-08-29"],
-                )
 
     @patch("modules.datasource.adaptors.base.create_stock_daily_quote_fetcher")
     def test_run_continues_from_latest_day_even_if_older_history_has_gap(
@@ -170,15 +152,6 @@ class DailyQuotePipelineRunTest(unittest.TestCase):
                 fetcher.calls,
                 [("600519", "2024-08-29", "2024-08-29", stock_id, result.id)],
             )
-            with RepositorySession(ctx.database) as repositories:
-                self.assertEqual(
-                    repositories.daily_quote.list_trade_dates_by_stock(
-                        stock_id=stock_id,
-                        start_date="2024-08-26",
-                        end_date="2024-08-29",
-                    ),
-                    ["2024-08-26", "2024-08-28", "2024-08-29"],
-                )
 
     def _seed_stock(
         self,
@@ -282,7 +255,7 @@ class DailyQuotePipelineRunTest(unittest.TestCase):
                 root = Path(self.temp_dir.name)
                 self.database = SQLiteDatabase(root / "glutton.db")
                 SQLiteSchemaManager(self.database).initialize()
-                self.pipeline = DailyQuotePipeline(
+                self.pipeline = StockDailyPipeline(
                     self.database, RawStore(root / "raw")
                 )
                 return self

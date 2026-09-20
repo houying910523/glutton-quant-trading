@@ -1,6 +1,6 @@
 -- 指标定义表
 
-CREATE TABLE IF NOT EXISTS indicator_definition (
+CREATE TABLE IF NOT EXISTS indicators (
     id INTEGER PRIMARY KEY,
     indicator_id TEXT NOT NULL,
     version TEXT NOT NULL DEFAULT 'v1',
@@ -21,5 +21,5 @@ CREATE TABLE IF NOT EXISTS indicator_definition (
     UNIQUE (storage_key)
 );
 
-CREATE INDEX IF NOT EXISTS idx_indicator_definition_category_status
-ON indicator_definition (category, status);
+CREATE INDEX IF NOT EXISTS idx_indicator_category_status
+ON indicators (category, status);

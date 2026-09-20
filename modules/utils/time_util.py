@@ -30,6 +30,10 @@ def parse_date(value: str | None) -> date | None:
 
 
 def format_date(value: date | str | None) -> str | None:
+    """
+    :param value:
+    :return: YYYY-MM-DD
+    """
     if value is None:
         return None
     if isinstance(value, str):

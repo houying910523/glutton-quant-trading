@@ -6,7 +6,7 @@ CREATE TABLE IF NOT EXISTS ingestion_batch (
     id INTEGER PRIMARY KEY,
     batch_key TEXT NOT NULL UNIQUE,
     source_name TEXT NOT NULL,
-    resource_type TEXT NOT NULL CHECK (resource_type IN ('stock', 'trading_calendar', 'daily_quote')),
+    resource_type TEXT NOT NULL CHECK (resource_type IN ('stock_info', 'trading_calendar', 'stock_daily')),
     sync_mode TEXT NOT NULL CHECK (sync_mode IN ('full', 'incremental', 'refresh')),
     start_date TEXT,
     end_date TEXT,
@@ -33,14 +33,14 @@ ON ingestion_batch (status, started_at DESC);
 CREATE INDEX IF NOT EXISTS idx_ingestion_batch_resource_sync_trade_date
 ON ingestion_batch (resource_type, sync_mode);
 
-CREATE TABLE IF NOT EXISTS stock (
+CREATE TABLE IF NOT EXISTS stock_info (
     id INTEGER PRIMARY KEY,
     market TEXT NOT NULL,
     exchange TEXT NOT NULL CHECK (exchange IN ('SSE', 'SZSE')),
     symbol TEXT NOT NULL,
     ticker TEXT,
     name TEXT NOT NULL,
-    asset_type TEXT NOT NULL CHECK (asset_type = 'stock'),
+    asset_type TEXT NOT NULL CHECK (asset_type = 'stock_info'),
     currency TEXT NOT NULL CHECK (currency = 'CNY'),
     lot_size INTEGER NOT NULL CHECK (lot_size > 0),
     listed_at TEXT,
@@ -52,11 +52,11 @@ CREATE TABLE IF NOT EXISTS stock (
     CHECK (delisted_at IS NULL OR listed_at IS NULL OR listed_at <= delisted_at)
 );
 
-CREATE INDEX IF NOT EXISTS idx_stock_status_exchange
-ON stock (status, exchange);
+CREATE INDEX IF NOT EXISTS idx_stock_info_status_exchange
+ON stock_info (status, exchange);
 
-CREATE INDEX IF NOT EXISTS idx_stock_updated_at
-ON stock (updated_at DESC);
+CREATE INDEX IF NOT EXISTS idx_stock_info_updated_at
+ON stock_info (updated_at DESC);
 
 CREATE TABLE IF NOT EXISTS trading_calendar (
     id INTEGER PRIMARY KEY,
@@ -71,7 +71,7 @@ CREATE TABLE IF NOT EXISTS trading_calendar (
 CREATE INDEX IF NOT EXISTS idx_trading_calendar_trade_date
 ON trading_calendar (trade_date DESC);
 
-CREATE TABLE IF NOT EXISTS daily_quote (
+CREATE TABLE IF NOT EXISTS stock_daily (
     id INTEGER PRIMARY KEY,
     stock_id INTEGER NOT NULL,
     trade_date TEXT NOT NULL,
@@ -80,12 +80,13 @@ CREATE TABLE IF NOT EXISTS daily_quote (
     low INTEGER NOT NULL CHECK (low > 0),
     close INTEGER NOT NULL CHECK (close > 0),
     volume INTEGER NOT NULL CHECK (volume >= 0),
+    amount INTEGER NOT NULL CHECK (amount >= 0),
     turnover INTEGER CHECK (turnover IS NULL OR turnover >= 0),
     ingestion_batch_id INTEGER NOT NULL,
     ingested_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (stock_id, trade_date),
-    FOREIGN KEY (stock_id) REFERENCES stock(id),
+    FOREIGN KEY (stock_id) REFERENCES stock_info(id),
     FOREIGN KEY (ingestion_batch_id) REFERENCES ingestion_batch(id),
     CHECK (high >= open),
     CHECK (high >= close),
@@ -94,8 +95,8 @@ CREATE TABLE IF NOT EXISTS daily_quote (
     CHECK (high >= low)
 );
 
-CREATE INDEX IF NOT EXISTS idx_daily_quote_trade_date_stock
-ON daily_quote (trade_date, stock_id);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_trade_date_stock
+ON stock_daily (trade_date, stock_id);
 
-CREATE INDEX IF NOT EXISTS idx_daily_quote_ingestion_batch
-ON daily_quote (ingestion_batch_id);
+CREATE INDEX IF NOT EXISTS idx_stock_daily_ingestion_batch
+ON stock_daily (ingestion_batch_id);

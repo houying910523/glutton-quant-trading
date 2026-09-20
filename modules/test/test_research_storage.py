@@ -100,8 +100,8 @@ class _ResearchStorageSeedMixin:
 
 
 @unittest.skipIf(pl is None, "polars is not installed")
-class StockDailyServiceLoadDailyBarsTest(_ResearchStorageSeedMixin, unittest.TestCase):
-    def test_load_daily_bars_returns_requested_columns(self) -> None:
+class StockDailyServiceLoadStockDailyTest(_ResearchStorageSeedMixin, unittest.TestCase):
+    def test_load_stock_daily_returns_requested_columns(self) -> None:
         with tempfile.TemporaryDirectory() as tmp_dir:
             root = Path(tmp_dir)
             database = SQLiteDatabase(root / "glutton.db")
@@ -111,7 +111,7 @@ class StockDailyServiceLoadDailyBarsTest(_ResearchStorageSeedMixin, unittest.Tes
             from modules.datasource.service.stock_daily_service import StockDailyService
 
             loader = StockDailyService(database)
-            frame = loader.load_daily_bars(
+            frame = loader.load_stock_daily(
                 start_date=date(2024, 1, 2),
                 end_date=date(2024, 1, 3),
                 instruments=["600519.SH"],

@@ -5,8 +5,7 @@ import json
 import typer
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.scripts.common import JobRuntime
-from modules.datasource.pipeline import DailyQuotePipeline
+from modules.datasource.pipeline import StockDailyPipeline
 
 app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 
@@ -15,17 +14,21 @@ app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 def main(
     stock_id: int | None = typer.Option(None, "--stock-id"),
     symbol: str | None = typer.Option(None, "--symbol"),
+    force: bool = typer.Option(False, "--force"),
     adapter: AdapterType = typer.Option(
         "akshare", "--adapter", help="选择数据源 adapter"
     ),
 ) -> None:
-    runtime = JobRuntime()
-    pipeline = DailyQuotePipeline(runtime.database, runtime.raw_store)
+    from modules.app import App
+
+    runtime = App()
+    pipeline = StockDailyPipeline(runtime.database)
     result = pipeline.run(
         adaptor_type=adapter,
         sync_mode="incremental",
         stock_id=stock_id,
         symbol=symbol,
+        force=force,
     )
     typer.echo(
         json.dumps(

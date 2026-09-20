@@ -4,12 +4,11 @@ from dataclasses import dataclass
 from typing import Any, TypeVar
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.pipeline.raw_store import RawStore
 from modules.datasource.exceptions import PipelineExecutionError
-from modules.utils.time_util import format_timestamp
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
 from modules.repositories.models import IngestionBatchRecord, BatchStatus
+from modules.utils.time_util import format_timestamp
 
 
 @dataclass
@@ -29,9 +28,8 @@ T = TypeVar("T")
 class BasePipeline:
     resource_type: str
 
-    def __init__(self, database: SQLiteDatabase, raw_store: RawStore) -> None:
+    def __init__(self, database: SQLiteDatabase) -> None:
         self._database = database
-        self._raw_store = raw_store
 
     def create_running_batch(self, *, source_name: str, **kwargs):
         with RepositorySession(self._database, transactional=True) as repositories:
@@ -58,11 +56,6 @@ class BasePipeline:
         batch = self.create_running_batch(source_name=adaptor_type, **kwargs)
         outcome: PipelineOutcome | None = None
         try:
-            self._raw_store.write_manifest(
-                batch,
-                status="running",
-                row_count_raw=0,
-            )
             with RepositorySession(self._database, transactional=True) as repositories:
                 outcome = self._process(repositories, batch, adaptor_type, **kwargs)
             finished_at = format_timestamp()
@@ -73,13 +66,6 @@ class BasePipeline:
                     outcome=outcome,
                     finished_at=finished_at,
                 )
-            self._raw_store.write_manifest(
-                batch,
-                status=outcome.status,
-                row_count_raw=outcome.raw_count,
-                rejected=outcome.rejected_records,
-                finished_at=finished_at,
-            )
             return batch.model_copy(
                 update={
                     "status": outcome.status,
@@ -106,15 +92,6 @@ class BasePipeline:
                     rejected_count=0,
                     error_summary=str(exc),
                 )
-            try:
-                self._raw_store.write_manifest(
-                    batch,
-                    status="failed",
-                    row_count_raw=raw_count,
-                    finished_at=finished_at,
-                )
-            except Exception:
-                pass
             raise PipelineExecutionError(str(exc)) from exc
 
     def _process(

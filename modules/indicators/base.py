@@ -21,7 +21,7 @@ class Indicator(ABC):
     ) -> pl.DataFrame: ...
 
 
-def load_factor(definition: IndicatorDefinition) -> Indicator:
+def load_indicator(definition: IndicatorDefinition) -> Indicator:
     module_name, separator, class_name = definition.compute_ref.partition(":")
     if not separator or not module_name or not class_name:
         raise ValueError("compute_ref must use the format 'module.path:ClassName'")

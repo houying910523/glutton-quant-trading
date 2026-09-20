@@ -5,8 +5,7 @@ import json
 import typer
 
 from modules.datasource.adaptors import AdapterType
-from modules.datasource.scripts.common import JobRuntime
-from modules.datasource.pipeline import StockPipeline
+from modules.datasource.pipeline import StockInfoPipeline
 
 app = typer.Typer(add_completion=False, pretty_exceptions_enable=False)
 
@@ -17,8 +16,10 @@ def main(
         "akshare", "--adapter", help="选择数据源 adapter"
     ),
 ) -> None:
-    runtime = JobRuntime()
-    pipeline = StockPipeline(runtime.database, runtime.raw_store)
+    from modules.app import App
+
+    runtime = App()
+    pipeline = StockInfoPipeline(runtime.database)
     result = pipeline.run(adapter, sync_mode="full")
     typer.echo(
         json.dumps(

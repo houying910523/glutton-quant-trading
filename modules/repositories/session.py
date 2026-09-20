@@ -14,12 +14,12 @@ class RepositorySession:
         self._connection: sqlite3.Connection | None = None
 
     def __enter__(self) -> "RepositorySession":
-        from modules.repositories.daily_quote_repository import DailyQuoteRepository
-        from modules.repositories.indicator_definition_repository import (
-            IndicatorDefinitionRepository,
+        from modules.repositories.stock_daily_repository import StockDailyRepository
+        from modules.repositories.indicator_repository import (
+            IndicatorRepository,
         )
         from modules.repositories.ingestion_batch_repository import BatchRepository
-        from modules.repositories.stock_repository import StockRepository
+        from modules.repositories.stock_info_repository import StockInfoRepository
         from modules.repositories.trading_calendar_repository import (
             TradingCalendarRepository,
         )
@@ -28,10 +28,10 @@ class RepositorySession:
         if connection is None:
             raise Exception("连接数据库失败")
         self.batch = BatchRepository(connection)
-        self.daily_quote = DailyQuoteRepository(connection)
-        self.indicator_definition = IndicatorDefinitionRepository(connection)
-        self.stock = StockRepository(connection)
+        self.stock_daily = StockDailyRepository(connection)
+        self.stock_info = StockInfoRepository(connection)
         self.trading_calendar = TradingCalendarRepository(connection)
+        self.indicator = IndicatorRepository(connection)
         self._connection = connection
         return self
 

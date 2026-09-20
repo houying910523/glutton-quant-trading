@@ -11,21 +11,6 @@ class StockDailyService:
     def __init__(self, database: SQLiteDatabase) -> None:
         self._database = database
 
-    def load_daily_bars(
-        self,
-        *,
-        start_date: date,
-        end_date: date,
-        instruments: list[str] | None = None,
-        columns: list[str] | None = None,
-    ) -> pl.DataFrame:
-        return self.load_stock_daily(
-            start_date=start_date,
-            end_date=end_date,
-            instruments=instruments,
-            columns=columns,
-        )
-
     def load_stock_daily(
         self,
         *,
@@ -43,10 +28,10 @@ class StockDailyService:
 
         sql = f"""
             SELECT {", ".join(select_items)}
-            FROM daily_quote q
-            JOIN stock s
-              ON s.id = q.stock_id
-            WHERE q.trade_date BETWEEN ? AND ?
+            FROM stock_daily as d
+            JOIN stock_info as s
+              ON s.id = d.stock_id
+            WHERE d.trade_date BETWEEN ? AND ?
         """
         parameters: list[object] = [start_date.isoformat(), end_date.isoformat()]
 
@@ -90,7 +75,7 @@ class StockDailyService:
             "low": "q.low / 100.0 AS low",
             "close": "q.close / 100.0 AS close",
             "volume": "q.volume AS volume",
-            "turnover": "CASE WHEN q.turnover IS NULL THEN NULL ELSE q.turnover / 100.0 END AS turnover",
+            "turnover": "CASE WHEN q.turnover IS NULL THEN NULL ELSE q.turnover / 10000.0 END AS turnover",
         }
         return mapping[column]
 

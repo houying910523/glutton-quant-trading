@@ -12,13 +12,13 @@ import typer
 from tqdm import tqdm
 
 from modules.config import DEFAULT_DB_PATH, DEFAULT_INDICATOR_ROOT, resolve_project_path
-from modules.indicators.base import load_factor
+from modules.indicators.base import load_indicator
 from modules.indicators.models import IndicatorDefinition, IndicatorSpec
 from modules.datasource.service.stock_daily_service import StockDailyService
 from modules.indicators.storage import IndicatorStore
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
-from modules.repositories.models import IndicatorDefinitionRecord
+from modules.repositories.models import IndicatorRecord
 from modules.repositories.schema import SQLiteSchemaManager
 from modules.utils.time_util import format_date, parse_date
 
@@ -95,7 +95,7 @@ def refresh_factors(
                 if formatted_date is None:
                     return
                 with RepositorySession(database, transactional=True) as repositories:
-                    repositories.indicator_definition.set_last_materialized_date(
+                    repositories.indicator.set_last_materialized_date(
                         indicator_id=current_indicator_definition.indicator_id,
                         version=current_indicator_definition.version,
                         last_materialized_date=formatted_date,
@@ -137,8 +137,8 @@ def refresh_indicator_definition(
     on_month_processed: Callable[[date], None] | None = None,
     on_month_materialized: Callable[[date], None] | None = None,
 ) -> dict[str, Any]:
-    factor = load_factor(indicator_definition)
-    spec = factor.spec(indicator_definition.params)
+    indicator = load_indicator(indicator_definition)
+    spec = indicator.spec(indicator_definition.params)
     _validate_spec(indicator_definition, spec)
 
     partitions_written: list[str] = []
@@ -159,7 +159,7 @@ def refresh_indicator_definition(
             columns=spec.required_columns,
         )
         if not stock_daily.is_empty():
-            computed = factor.compute(stock_daily, indicator_definition.params)
+            computed = indicator.compute(stock_daily, indicator_definition.params)
             output = _normalize_output_frame(
                 computed,
                 output_columns=indicator_definition.output_columns,
@@ -291,7 +291,7 @@ def _load_indicator_definitions(
     indicator_ids: list[str] | None,
 ) -> list[IndicatorDefinition]:
     if not indicator_ids:
-        records = repositories.indicator_definition.list_active()
+        records = repositories.indicator.list_active()
         return [_to_indicator_definition(record) for record in records]
 
     indicator_definitions: list[IndicatorDefinition] = []
@@ -300,7 +300,7 @@ def _load_indicator_definitions(
         normalized = indicator_id.strip()
         if not normalized or normalized in seen:
             continue
-        record = repositories.indicator_definition.get(normalized)
+        record = repositories.indicator.get(normalized)
         if record is None:
             raise ValueError(f"indicator definition not found: {normalized}")
         if record.status != "active":
@@ -311,7 +311,7 @@ def _load_indicator_definitions(
 
 
 def _to_indicator_definition(
-    record: IndicatorDefinitionRecord,
+    record: IndicatorRecord,
 ) -> IndicatorDefinition:
     return IndicatorDefinition(
         indicator_id=record.indicator_id,

@@ -7,7 +7,7 @@ from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
 
 
-class StockRepository(SQLiteRepository):
+class StockInfoRepository(SQLiteRepository):
     def upsert_many(self, records: list[StockRecord]) -> None:
         payload = [
             (
@@ -31,7 +31,7 @@ class StockRepository(SQLiteRepository):
             return
         self._connection.executemany(
             """
-            INSERT INTO stock (
+            INSERT INTO stock_info (
                 market, exchange, symbol, ticker, name, asset_type, currency,
                 lot_size, listed_at, delisted_at, status, created_at, updated_at
             ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -61,7 +61,7 @@ class StockRepository(SQLiteRepository):
         rows = self._connection.execute(
             f"""
             SELECT *
-            FROM stock
+            FROM stock_info
             WHERE (market, exchange, symbol) IN ({placeholders})
             """,
             parameters,
@@ -72,7 +72,7 @@ class StockRepository(SQLiteRepository):
         rows = self._connection.execute(
             """
             SELECT id, symbol
-            FROM stock
+            FROM stock_info
             WHERE status = 'active'
             ORDER BY exchange ASC, symbol ASC
             """
@@ -105,7 +105,7 @@ class StockRepository(SQLiteRepository):
         rows = self._connection.execute(
             f"""
             SELECT id, symbol, listed_at
-            FROM stock
+            FROM stock_info
             WHERE {" AND ".join(conditions)}
             ORDER BY exchange ASC, symbol ASC
             """,

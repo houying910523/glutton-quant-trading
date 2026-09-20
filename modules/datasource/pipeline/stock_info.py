@@ -8,8 +8,8 @@ from modules.repositories.models import IngestionBatchRecord, StockRecord
 from .base import BasePipeline, PipelineOutcome
 
 
-class StockPipeline(BasePipeline):
-    resource_type = "stock"
+class StockInfoPipeline(BasePipeline):
+    resource_type = "stock_info"
 
     def _process(
         self,
@@ -22,7 +22,7 @@ class StockPipeline(BasePipeline):
 
         stock_fetcher = create_stock_fetcher(adaptor_type)
         rows = stock_fetcher.fetch()
-        existing_rows = repositories.stock.load_existing_by_natural_keys(
+        existing_rows = repositories.stock_info.load_existing_by_natural_keys(
             [
                 ("CN", row.exchange, row.symbol)
                 for row in rows
@@ -42,7 +42,7 @@ class StockPipeline(BasePipeline):
                 continue
             rejected.append(row)
 
-        repositories.stock.upsert_many(accepted)
+        repositories.stock_info.upsert_many(accepted)
 
         return PipelineOutcome(
             status="success",

@@ -102,6 +102,7 @@ class DailyQuoteRecord(BaseModel):
     low: int
     close: int
     volume: int
+    amount: int
     turnover: int | None = None
     ingestion_batch_id: int
     ingested_at: datetime
@@ -139,7 +140,7 @@ class RawManifestRecord(BaseModel):
     records_sha256: str | None = None
 
 
-class IndicatorDefinitionRecord(BaseModel):
+class IndicatorRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int | None = None
@@ -158,7 +159,7 @@ class IndicatorDefinitionRecord(BaseModel):
     updated_at: str
 
     @model_validator(mode="after")
-    def validate_definition(self) -> "IndicatorDefinitionRecord":
+    def validate_indicator(self) -> "IndicatorRecord":
         if not self.indicator_id.strip():
             raise ValueError("indicator_id must not be empty")
         if not self.indicator_name.strip():

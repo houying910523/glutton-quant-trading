@@ -7,7 +7,7 @@ from pathlib import Path
 from modules.utils.time_util import format_timestamp
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
-from modules.repositories.models import IndicatorDefinitionRecord
+from modules.repositories.models import IndicatorRecord
 from modules.repositories.schema import SQLiteSchemaManager
 
 
@@ -24,7 +24,7 @@ class SQLiteSchemaManagerInitializeTest(unittest.TestCase):
             database = _initialize_database(root)
 
             with RepositorySession(database) as repositories:
-                definitions = repositories.indicator_definition.list_active()
+                definitions = repositories.indicator.list_active()
 
             self.assertEqual(
                 [item.indicator_id for item in definitions],
@@ -39,7 +39,7 @@ class IndicatorDefinitionRepositoryUpsertTest(unittest.TestCase):
             database = _initialize_database(root)
             now = format_timestamp()
 
-            record = IndicatorDefinitionRecord(
+            record = IndicatorRecord(
                 indicator_id="ma_20",
                 version="v1",
                 indicator_name="20日均线",
@@ -57,13 +57,13 @@ class IndicatorDefinitionRepositoryUpsertTest(unittest.TestCase):
             )
 
             with RepositorySession(database, transactional=True) as repositories:
-                persisted = repositories.indicator_definition.upsert(record)
+                persisted = repositories.indicator.upsert(record)
 
             self.assertIsNotNone(persisted.id)
             self.assertEqual(persisted.indicator_id, "ma_20")
 
             with RepositorySession(database) as repositories:
-                fetched = repositories.indicator_definition.get("ma_20", version="v1")
+                fetched = repositories.indicator.get("ma_20", version="v1")
 
             self.assertIsNotNone(fetched)
             assert fetched is not None
@@ -81,14 +81,14 @@ class IndicatorDefinitionRepositorySetLastMaterializedDateTest(unittest.TestCase
             database = _initialize_database(root)
 
             with RepositorySession(database, transactional=True) as repositories:
-                repositories.indicator_definition.set_last_materialized_date(
+                repositories.indicator.set_last_materialized_date(
                     indicator_id="ma_5_10_20_30_60_120",
                     version="v1",
                     last_materialized_date="2024-01-25",
                 )
 
             with RepositorySession(database) as repositories:
-                fetched = repositories.indicator_definition.get(
+                fetched = repositories.indicator.get(
                     "ma_5_10_20_30_60_120", version="v1"
                 )
 
@@ -105,7 +105,7 @@ class IndicatorDefinitionRepositoryListActiveTest(unittest.TestCase):
             now = format_timestamp()
 
             records = [
-                IndicatorDefinitionRecord(
+                IndicatorRecord(
                     indicator_id="ma_20",
                     version="v1",
                     indicator_name="20日均线",
@@ -120,7 +120,7 @@ class IndicatorDefinitionRepositoryListActiveTest(unittest.TestCase):
                     created_at=now,
                     updated_at=now,
                 ),
-                IndicatorDefinitionRecord(
+                IndicatorRecord(
                     indicator_id="rsi_14",
                     version="v1",
                     indicator_name="RSI(14)",
@@ -136,10 +136,10 @@ class IndicatorDefinitionRepositoryListActiveTest(unittest.TestCase):
             ]
 
             with RepositorySession(database, transactional=True) as repositories:
-                repositories.indicator_definition.upsert_many(records)
+                repositories.indicator.upsert_many(records)
 
             with RepositorySession(database) as repositories:
-                active = repositories.indicator_definition.list_active()
+                active = repositories.indicator.list_active()
 
             self.assertEqual(
                 [item.indicator_id for item in active],
@@ -155,7 +155,7 @@ class IndicatorDefinitionRepositoryListByCategoryTest(unittest.TestCase):
             now = format_timestamp()
 
             records = [
-                IndicatorDefinitionRecord(
+                IndicatorRecord(
                     indicator_id="ma_20",
                     version="v1",
                     indicator_name="20日均线",
@@ -170,7 +170,7 @@ class IndicatorDefinitionRepositoryListByCategoryTest(unittest.TestCase):
                     created_at=now,
                     updated_at=now,
                 ),
-                IndicatorDefinitionRecord(
+                IndicatorRecord(
                     indicator_id="rsi_14",
                     version="v1",
                     indicator_name="RSI(14)",
@@ -186,11 +186,11 @@ class IndicatorDefinitionRepositoryListByCategoryTest(unittest.TestCase):
             ]
 
             with RepositorySession(database, transactional=True) as repositories:
-                repositories.indicator_definition.upsert_many(records)
+                repositories.indicator.upsert_many(records)
 
             with RepositorySession(database) as repositories:
-                trend = repositories.indicator_definition.list_by_category("trend")
-                momentum_all = repositories.indicator_definition.list_by_category(
+                trend = repositories.indicator.list_by_category("trend")
+                momentum_all = repositories.indicator.list_by_category(
                     "momentum", active_only=False
                 )
 

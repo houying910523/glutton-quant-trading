@@ -7,9 +7,9 @@ from typing import Any, Generator
 
 from modules.datasource.adaptors import AdapterType
 from modules.datasource.pipeline.base import BasePipeline, PipelineOutcome
-from modules.utils.time_util import now_shanghai, parse_date
 from modules.repositories import RepositorySession
 from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
+from modules.utils.time_util import now_shanghai, parse_date
 
 DEFAULT_HISTORY_START_DATE = "1991-01-01"
 
@@ -18,7 +18,8 @@ DEFAULT_HISTORY_START_DATE = "1991-01-01"
 class StockSyncTarget:
     stock_id: int
     symbol: str
-    listed_at: str | None
+    listed_at: str | None = None
+    force: bool | None = None
 
 
 @dataclass
@@ -30,8 +31,8 @@ class Task:
     end_date: str
 
 
-class DailyQuotePipeline(BasePipeline):
-    resource_type = "daily_quote"
+class StockDailyPipeline(BasePipeline):
+    resource_type = "stock_daily"
 
     def create_running_batch(self, *, source_name: str, **kwargs):
         kwargs.setdefault("sync_mode", "incremental")
@@ -62,8 +63,9 @@ class DailyQuotePipeline(BasePipeline):
             rejected_count=0,
         )
 
+    @classmethod
     def _incremental_daily_quote(
-        self,
+        cls,
         repositories: RepositorySession,
         target_stocks: list[StockSyncTarget],
     ) -> list[Task]:
@@ -71,10 +73,10 @@ class DailyQuotePipeline(BasePipeline):
         tasks: list[Task] = []
         for stock in target_stocks:
             history_start_date = stock.listed_at or DEFAULT_HISTORY_START_DATE
-            latest_trade_date = repositories.daily_quote.get_latest_trade_date(
+            latest_trade_date = repositories.stock_daily.get_latest_trade_date(
                 stock_id=stock.stock_id
             )
-            if latest_trade_date:
+            if latest_trade_date and not stock.force:
                 next_date = parse_date(latest_trade_date)
                 if next_date is None:
                     raise ValueError(
@@ -101,36 +103,6 @@ class DailyQuotePipeline(BasePipeline):
                 )
             )
         return tasks
-
-    @classmethod
-    def _sequence_process_daily_quote(
-        cls,
-        adaptor_type: AdapterType,
-        tasks: list[Task],
-        batch: IngestionBatchRecord,
-    ):
-        from modules.datasource.adaptors.base import create_stock_daily_quote_fetcher
-
-        stock_daily_quote_fetcher = create_stock_daily_quote_fetcher(adaptor_type)
-
-        from tqdm import tqdm
-
-        for task in tqdm(
-            tasks,
-            ncols=100,
-            desc="Fetching",
-            total=len(tasks),
-            leave=False,
-            unit="stock",
-        ):
-            records = stock_daily_quote_fetcher.fetch(
-                task.symbol,
-                task.start_date,
-                task.end_date,
-                batch_id=batch.id,
-                stock_id=task.stock_id,
-            )
-            yield task, records
 
     @classmethod
     def _parallel_process_daily_quote(
@@ -199,28 +171,33 @@ class DailyQuotePipeline(BasePipeline):
         finally:
             progress.close()
 
+    @classmethod
     def _upsert_records(
-        self,
+        cls,
         repositories: RepositorySession,
         records: list[DailyQuoteRecord],
     ) -> None:
-        repositories.daily_quote.upsert_many(records)
+        repositories.stock_daily.upsert_many(records)
         repositories.commit()
 
+    @classmethod
     def _select_target_stocks(
-        self,
+        cls,
         repositories: RepositorySession,
         kwargs: dict[str, Any],
     ) -> list[StockSyncTarget]:
-        stock_ids = set(self._normalize_int_filters(kwargs, "stock_id", "stock_ids"))
-        symbols = set(self._normalize_str_filters(kwargs, "symbol"))
+        stock_ids = set(cls._normalize_int_filters(kwargs, "stock_id", "stock_ids"))
+        symbols = set(cls._normalize_str_filters(kwargs, "symbol"))
+        force = kwargs.get("force", False)
+
         targets = [
             StockSyncTarget(
                 stock_id=stock_id,
                 symbol=symbol,
                 listed_at=listed_at,
+                force=force,
             )
-            for stock_id, symbol, listed_at in repositories.stock.list_active_sync_targets(
+            for stock_id, symbol, listed_at in repositories.stock_info.list_active_sync_targets(
                 stock_ids=sorted(stock_ids) or None,
                 symbols=sorted(symbols) or None,
             )

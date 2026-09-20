@@ -5,22 +5,22 @@ from typing import Any
 
 from modules.utils.time_util import format_date, format_timestamp
 from modules.repositories.base import SQLiteRepository
-from modules.repositories.models import IndicatorDefinitionRecord
+from modules.repositories.models import IndicatorRecord
 
 
-class IndicatorDefinitionRepository(SQLiteRepository):
-    def upsert(self, record: IndicatorDefinitionRecord) -> IndicatorDefinitionRecord:
+class IndicatorRepository(SQLiteRepository):
+    def upsert(self, record: IndicatorRecord) -> IndicatorRecord:
         records = self.upsert_many([record])
         return records[0]
 
     def upsert_many(
         self,
-        records: list[IndicatorDefinitionRecord],
-    ) -> list[IndicatorDefinitionRecord]:
+        records: list[IndicatorRecord],
+    ) -> list[IndicatorRecord]:
         if not records:
             return []
 
-        persisted: list[IndicatorDefinitionRecord] = []
+        persisted: list[IndicatorRecord] = []
         for record in records:
             created_at = record.created_at
             updated_at = record.updated_at
@@ -30,7 +30,7 @@ class IndicatorDefinitionRepository(SQLiteRepository):
                     created_at = existing.created_at
             self._connection.execute(
                 """
-                INSERT INTO indicator_definition (
+                INSERT INTO indicators (
                     indicator_id,
                     version,
                     indicator_name,
@@ -56,7 +56,7 @@ class IndicatorDefinitionRepository(SQLiteRepository):
                     status = excluded.status,
                     last_materialized_date = COALESCE(
                         excluded.last_materialized_date,
-                        indicator_definition.last_materialized_date
+                        indicators.last_materialized_date
                     ),
                     updated_at = excluded.updated_at
                 """,
@@ -86,11 +86,11 @@ class IndicatorDefinitionRepository(SQLiteRepository):
         self,
         indicator_id: str,
         version: str = "v1",
-    ) -> IndicatorDefinitionRecord | None:
+    ) -> IndicatorRecord | None:
         row = self._connection.execute(
             """
             SELECT *
-            FROM indicator_definition
+            FROM indicators
             WHERE indicator_id = ?
               AND version = ?
             """,
@@ -100,11 +100,11 @@ class IndicatorDefinitionRepository(SQLiteRepository):
             return None
         return self._row_to_record(row)
 
-    def get_by_storage_key(self, storage_key: str) -> IndicatorDefinitionRecord | None:
+    def get_by_storage_key(self, storage_key: str) -> IndicatorRecord | None:
         row = self._connection.execute(
             """
             SELECT *
-            FROM indicator_definition
+            FROM indicators
             WHERE storage_key = ?
             """,
             (storage_key,),
@@ -113,21 +113,21 @@ class IndicatorDefinitionRepository(SQLiteRepository):
             return None
         return self._row_to_record(row)
 
-    def list_all(self) -> list[IndicatorDefinitionRecord]:
+    def list_all(self) -> list[IndicatorRecord]:
         rows = self._connection.execute(
             """
             SELECT *
-            FROM indicator_definition
+            FROM indicators
             ORDER BY category, indicator_id, version
             """
         ).fetchall()
         return [self._row_to_record(row) for row in rows]
 
-    def list_active(self) -> list[IndicatorDefinitionRecord]:
+    def list_active(self) -> list[IndicatorRecord]:
         rows = self._connection.execute(
             """
             SELECT *
-            FROM indicator_definition
+            FROM indicators
             WHERE status = 'active'
             ORDER BY category, indicator_id, version
             """
@@ -139,12 +139,12 @@ class IndicatorDefinitionRepository(SQLiteRepository):
         category: str,
         *,
         active_only: bool = True,
-    ) -> list[IndicatorDefinitionRecord]:
+    ) -> list[IndicatorRecord]:
         if active_only:
             rows = self._connection.execute(
                 """
                 SELECT *
-                FROM indicator_definition
+                FROM indicators
                 WHERE category = ?
                   AND status = 'active'
                 ORDER BY indicator_id, version
@@ -155,7 +155,7 @@ class IndicatorDefinitionRepository(SQLiteRepository):
             rows = self._connection.execute(
                 """
                 SELECT *
-                FROM indicator_definition
+                FROM indicators
                 WHERE category = ?
                 ORDER BY indicator_id, version
                 """,
@@ -172,7 +172,7 @@ class IndicatorDefinitionRepository(SQLiteRepository):
     ) -> None:
         self._connection.execute(
             """
-            UPDATE indicator_definition
+            UPDATE indicators
             SET last_materialized_date = ?,
                 updated_at = ?
             WHERE indicator_id = ?
@@ -186,8 +186,8 @@ class IndicatorDefinitionRepository(SQLiteRepository):
             ),
         )
 
-    def _row_to_record(self, row: Any) -> IndicatorDefinitionRecord:
-        return IndicatorDefinitionRecord(
+    def _row_to_record(self, row: Any) -> IndicatorRecord:
+        return IndicatorRecord(
             id=int(row["id"]),
             indicator_id=row["indicator_id"],
             version=row["version"],

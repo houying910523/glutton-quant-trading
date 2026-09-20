@@ -331,6 +331,7 @@ class AkshareDailyQuoteAdapter(
         low = _to_cents(raw.get("low"))
         close = _to_cents(raw.get("close"))
         volume = _to_shares(raw.get("volume"))
+        amount = _to_cents(raw.get("amount"))
         turnover = _to_turnover_cents(raw.get("turnover"))
         if not self.validate_ohlc(open, high, low, close, volume, turnover):
             return None
@@ -343,6 +344,7 @@ class AkshareDailyQuoteAdapter(
             low=low,
             close=close,
             volume=volume,
+            amount=amount,
             turnover=turnover,
             ingestion_batch_id=0,
             ingested_at=now,
@@ -446,4 +448,4 @@ def _to_turnover_cents(value: Any) -> int | None:
     if value in (None, ""):
         return None
     decimal_value = Decimal(str(value))
-    return int((decimal_value * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    return int((decimal_value * 10000).to_integral_value(rounding=ROUND_HALF_UP))

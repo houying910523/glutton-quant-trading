@@ -16,7 +16,7 @@ from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
 from modules.repositories.models import (
     DailyQuoteRecord,
-    IndicatorDefinitionRecord,
+    IndicatorRecord,
     IngestionBatchRecord,
     StockRecord,
 )
@@ -52,7 +52,7 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(results[0]["last_materialized_date"], "2024-01-25")
 
             with RepositorySession(database) as repositories:
-                indicator_definition = repositories.indicator_definition.get("ma_20")
+                indicator_definition = repositories.indicator.get("ma_20")
 
             self.assertIsNotNone(indicator_definition)
             assert indicator_definition is not None
@@ -107,7 +107,7 @@ class RefreshFactorsTest(unittest.TestCase):
             self.assertEqual(results[0]["last_materialized_date"], "2024-02-10")
 
             with RepositorySession(database) as repositories:
-                indicator_definition = repositories.indicator_definition.get("ma_20")
+                indicator_definition = repositories.indicator.get("ma_20")
 
             self.assertIsNotNone(indicator_definition)
             assert indicator_definition is not None
@@ -252,7 +252,7 @@ class RefreshFactorsTest(unittest.TestCase):
                 )
 
             with RepositorySession(database) as repositories:
-                indicator_definition = repositories.indicator_definition.get("ma_20")
+                indicator_definition = repositories.indicator.get("ma_20")
 
             self.assertIsNotNone(indicator_definition)
             assert indicator_definition is not None
@@ -270,8 +270,8 @@ class RefreshFactorsTest(unittest.TestCase):
         timestamp = format_timestamp(now)
 
         with RepositorySession(database, transactional=True) as repositories:
-            repositories.indicator_definition.upsert(
-                IndicatorDefinitionRecord(
+            repositories.indicator.upsert(
+                IndicatorRecord(
                     indicator_id="ma_20",
                     version="v1",
                     indicator_name="20日均线",

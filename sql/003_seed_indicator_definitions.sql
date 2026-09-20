@@ -1,6 +1,6 @@
 -- 默认内置指标定义
 
-INSERT INTO indicator_definition (
+INSERT INTO indicators (
     indicator_id,
     version,
     indicator_name,
@@ -38,7 +38,7 @@ ON CONFLICT(indicator_id, version) DO UPDATE SET
     status = excluded.status,
     updated_at = excluded.updated_at;
 
-INSERT INTO indicator_definition (
+INSERT INTO indicators (
     indicator_id,
     version,
     indicator_name,
@@ -76,7 +76,7 @@ ON CONFLICT(indicator_id, version) DO UPDATE SET
     status = excluded.status,
     updated_at = excluded.updated_at;
 
-INSERT INTO indicator_definition (
+INSERT INTO indicators (
     indicator_id,
     version,
     indicator_name,
