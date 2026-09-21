@@ -2,11 +2,16 @@ from datetime import timedelta
 
 import polars as pl
 
+from modules.app import App
 from modules.core import Filter
 from modules.core.context import StockDailyData
 from modules.datasource.service.stock_daily_service import StockDailyService
+from modules.filters.main_board import MainBoardFilter
+from modules.filters.turnover import TurnoverFilter
 from modules.repositories.database import SQLiteDatabase
 from modules.utils.time_util import now_shanghai
+
+LOOKBACK_DAYS = 120
 
 
 class Selection:
@@ -22,7 +27,7 @@ class Selection:
         """Run the selection."""
         stock_daily_service = StockDailyService(self.database)
         end_date = now_shanghai().date()
-        start_date = end_date - timedelta(days=30)
+        start_date = end_date - timedelta(days=LOOKBACK_DAYS)
         data = stock_daily_service.load_stock_daily(
             start_date=start_date,
             end_date=end_date,
@@ -45,3 +50,19 @@ class Selection:
             )
             for group in grouped_data
         ]
+
+
+if __name__ == "__main__":
+    app = App()
+    database = app.database
+    filters = [
+        MainBoardFilter(),
+        TurnoverFilter(),
+        # BoxOscillationGainFilter()
+    ]
+    selection = Selection(database, filters)
+    data = selection.run()
+    for item in data:
+        print(item.instrument_id)
+
+    print(f"Total stocks: {len(data)}")

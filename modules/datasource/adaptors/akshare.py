@@ -7,7 +7,7 @@ from decimal import Decimal, ROUND_HALF_UP
 from threading import Lock
 from typing import Any, Callable, Iterable, TypeVar
 
-import pandas as pd
+import polars as pl
 
 from modules.datasource.adaptors.base import (
     StockFetcher,
@@ -20,7 +20,7 @@ from modules.utils.time_util import (
     parse_date,
     now_shanghai,
 )
-from modules.repositories.models import StockRecord, DailyQuoteRecord
+from modules.repositories.models import StockInfoRecord, StockDailyRecord
 
 
 class AkshareClient:
@@ -95,7 +95,7 @@ class BaseAkshareAdapterMixin[T](ABC):
         time.sleep(seconds)
 
     def _call_frame(
-        self, function: Callable[[], pd.DataFrame | None]
+        self, function: Callable[[], pl.DataFrame | None]
     ) -> list[dict[str, Any]]:
         last_error: Exception | None = None
         for attempt in range(3):
@@ -134,8 +134,8 @@ class BaseAkshareAdapterMixin[T](ABC):
         raise NotImplementedError
 
 
-class AkshareStockAdapter(StockFetcher, BaseAkshareAdapterMixin[StockRecord]):
-    def fetch(self) -> list[StockRecord]:
+class AkshareStockAdapter(StockFetcher, BaseAkshareAdapterMixin[StockInfoRecord]):
+    def fetch(self) -> list[StockInfoRecord]:
         raw_record_list = self._fetch_batch()
         return self._deduplicate_records(raw_record_list)
 
@@ -194,16 +194,13 @@ class AkshareStockAdapter(StockFetcher, BaseAkshareAdapterMixin[StockRecord]):
         if not name:
             raise ValueError("name is required")
         now = now_shanghai()
-        return StockRecord(
+        return StockInfoRecord(
             id=None,
             market="CN",
             exchange=exchange,
             symbol=symbol,
             ticker=symbol,
             name=name,
-            asset_type="stock",
-            currency="CNY",
-            lot_size=100,
             listed_at=parse_date(self._extract_stock_listed_at(raw)),
             delisted_at=parse_date(self._extract_stock_delisted_at(raw)),
             status="active" if list_status == "L" else "delisted",
@@ -297,9 +294,9 @@ class AkshareTradingCalendarAdapter(
 
 
 class AkshareDailyQuoteAdapter(
-    StockDailyQuoteFetcher, BaseAkshareAdapterMixin[DailyQuoteRecord]
+    StockDailyQuoteFetcher, BaseAkshareAdapterMixin[StockDailyRecord]
 ):
-    resource_type = "daily_quote"
+    resource_type = "stock_daily"
 
     def fetch(
         self,
@@ -308,7 +305,7 @@ class AkshareDailyQuoteAdapter(
         end_date: str,
         stock_id: int,
         batch_id: int,
-    ) -> list[DailyQuoteRecord]:
+    ) -> list[StockDailyRecord]:
         start_date = compact_date(start_date) or "20000101"
         end_date = compact_date(end_date) or "20500101"
         records = self._fetch_symbol_history(symbol, start_date, end_date)
@@ -331,11 +328,11 @@ class AkshareDailyQuoteAdapter(
         low = _to_cents(raw.get("low"))
         close = _to_cents(raw.get("close"))
         volume = _to_shares(raw.get("volume"))
-        amount = _to_cents(raw.get("amount"))
+        amount = _to_cents(raw.get("amount"), factor=1)
         turnover = _to_turnover_cents(raw.get("turnover"))
         if not self.validate_ohlc(open, high, low, close, volume, turnover):
             return None
-        return DailyQuoteRecord(
+        return StockDailyRecord(
             id=None,
             stock_id=0,
             trade_date=trade_date,
@@ -428,13 +425,13 @@ def _extract_akshare_stock_symbol(payload: dict[str, Any]) -> str | None:
     return None
 
 
-def _to_cents(value: Any) -> int:
+def _to_cents(value: Any, factor: int = 100) -> int:
     if value in (None, ""):
         raise ValueError("price is required")
     decimal_value = Decimal(str(value)).quantize(
         Decimal("0.01"), rounding=ROUND_HALF_UP
     )
-    return int((decimal_value * 100).to_integral_value(rounding=ROUND_HALF_UP))
+    return int((decimal_value * factor).to_integral_value(rounding=ROUND_HALF_UP))
 
 
 def _to_shares(value: Any) -> int:

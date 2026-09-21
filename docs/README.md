@@ -33,7 +33,7 @@
 - AkShare 数据接入
 - SQLite 标准层
 - `indicator_definition` 管理
-- 指标按月写入 Parquet 分区
+- 指标按年写入 Parquet 分区
 
 仍然处于占位或设计阶段的主线是：
 

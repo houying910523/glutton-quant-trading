@@ -4,7 +4,7 @@ from typing import Any
 
 from modules.datasource.adaptors import AdapterType
 from modules.repositories import RepositorySession
-from modules.repositories.models import IngestionBatchRecord, StockRecord
+from modules.repositories.models import IngestionBatchRecord, StockInfoRecord
 from .base import BasePipeline, PipelineOutcome
 
 
@@ -30,8 +30,8 @@ class StockInfoPipeline(BasePipeline):
             ]
         )
 
-        accepted: list[StockRecord] = []
-        rejected: list[StockRecord] = []
+        accepted: list[StockInfoRecord] = []
+        rejected: list[StockInfoRecord] = []
         seen_business_keys: set[tuple[str, str, str]] = set()
         for row in rows:
             business_key = ("CN", row.exchange, row.symbol)

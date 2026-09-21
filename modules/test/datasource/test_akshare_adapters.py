@@ -105,6 +105,7 @@ class FakeAkshareClient:
                     "high": 10.3,
                     "low": 9.9,
                     "volume": 123456,
+                    "amount": 1259254.4,
                     "turnover": 7890000.0,
                 }
             ]

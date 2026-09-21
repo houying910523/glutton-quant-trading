@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Iterable
 
-from modules.repositories.models import StockRecord
+from modules.repositories.models import StockInfoRecord
 from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
 
 
 class StockInfoRepository(SQLiteRepository):
-    def upsert_many(self, records: list[StockRecord]) -> None:
+    def upsert_many(self, records: list[StockInfoRecord]) -> None:
         payload = [
             (
                 record.market,
@@ -16,7 +16,6 @@ class StockInfoRepository(SQLiteRepository):
                 record.symbol,
                 record.ticker,
                 record.name,
-                record.asset_type,
                 record.currency,
                 record.lot_size,
                 format_date(record.listed_at),
@@ -32,9 +31,9 @@ class StockInfoRepository(SQLiteRepository):
         self._connection.executemany(
             """
             INSERT INTO stock_info (
-                market, exchange, symbol, ticker, name, asset_type, currency,
+                market, exchange, symbol, ticker, name, currency,
                 lot_size, listed_at, delisted_at, status, created_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(market, exchange, symbol) DO UPDATE SET
                 ticker = excluded.ticker,
                 name = excluded.name,
@@ -68,23 +67,6 @@ class StockInfoRepository(SQLiteRepository):
         ).fetchall()
         return {(row["market"], row["exchange"], row["symbol"]): row for row in rows}
 
-    def list_active_symbols(self) -> list[tuple[int, str]]:
-        rows = self._connection.execute(
-            """
-            SELECT id, symbol
-            FROM stock_info
-            WHERE status = 'active'
-            ORDER BY exchange ASC, symbol ASC
-            """
-        ).fetchall()
-        return [
-            (
-                row["id"],
-                row["symbol"],
-            )
-            for row in rows
-        ]
-
     def list_active_sync_targets(
         self,
         *,
@@ -116,6 +98,47 @@ class StockInfoRepository(SQLiteRepository):
                 row["id"],
                 row["symbol"],
                 row["listed_at"],
+            )
+            for row in rows
+        ]
+
+    def list_symbols(
+        self, symbol: str, name: str, page_no: int = 1, page_size: int = 40
+    ) -> list[StockInfoRecord]:
+        conditions = ["status = 'active'"]
+        parameters: list[object] = []
+        if symbol:
+            conditions.append("symbol LIKE ?")
+            parameters.append(f"%{symbol}%")
+        if name:
+            conditions.append("name LIKE ?")
+            parameters.append(f"%{name}%")
+
+        parameters.append((page_no - 1) * page_size)
+        parameters.append(page_size)
+
+        rows = self._connection.execute(
+            f"""
+                   SELECT id, symbol, listed_at, name, ticker, market, exchange, updated_at, created_at
+                   FROM stock_info
+                   WHERE {" AND ".join(conditions)}
+                   ORDER BY id ASC
+                   LIMIT ?, ?
+                   """,
+            parameters,
+        ).fetchall()
+        return [
+            StockInfoRecord(
+                id=row["id"],
+                symbol=row["symbol"],
+                listed_at=row["listed_at"],
+                status="active",
+                created_at=row["created_at"],
+                updated_at=row["updated_at"],
+                market=row["market"],
+                exchange=row["exchange"],
+                ticker=row["ticker"],
+                name=row["name"],
             )
             for row in rows
         ]

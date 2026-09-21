@@ -40,7 +40,6 @@ CREATE TABLE IF NOT EXISTS stock_info (
     symbol TEXT NOT NULL,
     ticker TEXT,
     name TEXT NOT NULL,
-    asset_type TEXT NOT NULL CHECK (asset_type = 'stock_info'),
     currency TEXT NOT NULL CHECK (currency = 'CNY'),
     lot_size INTEGER NOT NULL CHECK (lot_size > 0),
     listed_at TEXT,

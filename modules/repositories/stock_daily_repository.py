@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 
-from modules.repositories.models import DailyQuoteRecord
+from modules.repositories.models import StockDailyRecord
 from modules.utils.time_util import format_date
 from modules.repositories.base import SQLiteRepository
 
 
 class StockDailyRepository(SQLiteRepository):
-    def upsert_many(self, records: list[DailyQuoteRecord]) -> None:
+    def upsert_many(self, records: list[StockDailyRecord]) -> None:
         payload = [
             (
                 record.stock_id,
@@ -32,7 +32,7 @@ class StockDailyRepository(SQLiteRepository):
             INSERT INTO stock_daily (
                 stock_id, trade_date, open, high, low, close,
                 volume, amount, turnover, ingestion_batch_id, ingested_at, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
             ON CONFLICT(stock_id, trade_date) DO UPDATE SET
                 open = excluded.open,
                 high = excluded.high,

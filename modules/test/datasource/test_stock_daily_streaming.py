@@ -3,9 +3,9 @@ from __future__ import annotations
 import unittest
 from unittest.mock import patch
 
-from modules.datasource.pipeline.daily_quote import DailyQuotePipeline, Task
+from modules.datasource.pipeline.stock_daily import StockDailyPipeline, Task
 from modules.utils.time_util import now_shanghai, parse_date
-from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
+from modules.repositories.models import StockDailyRecord, IngestionBatchRecord
 
 
 class FakeDailyQuoteFetcher:
@@ -19,11 +19,11 @@ class FakeDailyQuoteFetcher:
         end_date: str,
         stock_id: int,
         batch_id: int,
-    ) -> list[DailyQuoteRecord]:
+    ) -> list[StockDailyRecord]:
         self.calls.append((symbol, start_date, end_date, stock_id, batch_id))
         now = now_shanghai()
         return [
-            DailyQuoteRecord(
+            StockDailyRecord(
                 id=None,
                 stock_id=stock_id,
                 trade_date=parse_date(start_date),
@@ -32,6 +32,7 @@ class FakeDailyQuoteFetcher:
                 low=990,
                 close=1005,
                 volume=100000,
+                amount=100000000,
                 turnover=100000000,
                 ingestion_batch_id=batch_id,
                 ingested_at=now,
@@ -66,7 +67,7 @@ class ParallelProcessDailyQuoteTest(unittest.TestCase):
             id=42,
             batch_key="daily_quote_2026-09-05_001",
             source_name="akshare",
-            resource_type="daily_quote",
+            resource_type="stock_daily",
             sync_mode="incremental",
             start_date=None,
             end_date=None,
@@ -111,7 +112,7 @@ class ParallelProcessDailyQuoteTest(unittest.TestCase):
         mock_tqdm.side_effect = create_progress_bar
 
         yielded = list(
-            DailyQuotePipeline._parallel_process_daily_quote(
+            StockDailyPipeline._parallel_process_daily_quote(
                 "akshare",
                 tasks,
                 batch,

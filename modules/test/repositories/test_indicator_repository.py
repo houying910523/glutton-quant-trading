@@ -28,7 +28,7 @@ class SQLiteSchemaManagerInitializeTest(unittest.TestCase):
 
             self.assertEqual(
                 [item.indicator_id for item in definitions],
-                ["ma_5_10_20_30_60_120", "macd_12_26_9", "boll_20_2"],
+                ["ma_5_10_20_30_60_120", "macd_12_26_9", "atr_14", "boll_20_2"],
             )
 
 
@@ -143,7 +143,13 @@ class IndicatorDefinitionRepositoryListActiveTest(unittest.TestCase):
 
             self.assertEqual(
                 [item.indicator_id for item in active],
-                ["ma_20", "ma_5_10_20_30_60_120", "macd_12_26_9", "boll_20_2"],
+                [
+                    "ma_20",
+                    "ma_5_10_20_30_60_120",
+                    "macd_12_26_9",
+                    "atr_14",
+                    "boll_20_2",
+                ],
             )
 
 

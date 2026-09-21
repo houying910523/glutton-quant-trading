@@ -24,24 +24,17 @@ def resolve_partition_path(
     storage_key: str,
     *,
     year: int,
-    month: int,
 ) -> Path:
     if year <= 0:
         raise ValueError("year must be positive")
-    if month < 1 or month > 12:
-        raise ValueError("month must be between 1 and 12")
     return (
         resolve_dataset_root(indicator_root, storage_key)
         / f"year={year:04d}"
-        / f"month={month:02d}"
         / "data.parquet"
     )
 
 
 def resolve_partition_glob(indicator_root: Path, storage_key: str) -> str:
     return str(
-        resolve_dataset_root(indicator_root, storage_key)
-        / "year=*"
-        / "month=*"
-        / "data.parquet"
+        resolve_dataset_root(indicator_root, storage_key) / "year=*" / "data.parquet"
     )

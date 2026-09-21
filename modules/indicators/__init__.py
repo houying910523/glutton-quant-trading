@@ -1,5 +1,5 @@
-from .base import Indicator, IndicatorSpec
-from .models import IndicatorDefinition
+from .base import Indicator
+from .models import IndicatorDefinition, IndicatorSpec
 
 __all__ = [
     "Indicator",

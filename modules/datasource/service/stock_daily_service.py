@@ -21,7 +21,7 @@ class StockDailyService:
     ) -> pl.DataFrame:
         requested = self._normalize_columns(columns)
         select_items = [
-            "q.trade_date AS trade_date",
+            "d.trade_date AS trade_date",
             self._instrument_id_sql() + " AS instrument_id",
         ]
         select_items.extend(self._column_sql(column) for column in requested)
@@ -40,7 +40,7 @@ class StockDailyService:
             sql += f" AND {self._instrument_id_sql()} IN ({placeholders})"
             parameters.extend(instruments)
 
-        sql += " ORDER BY q.trade_date ASC, instrument_id ASC"
+        sql += " ORDER BY d.trade_date ASC, instrument_id ASC"
 
         with self._database.connect() as connection:
             rows = connection.execute(sql, parameters).fetchall()
@@ -70,12 +70,13 @@ class StockDailyService:
     @classmethod
     def _column_sql(cls, column: str) -> str:
         mapping = {
-            "open": "q.open / 100.0 AS open",
-            "high": "q.high / 100.0 AS high",
-            "low": "q.low / 100.0 AS low",
-            "close": "q.close / 100.0 AS close",
-            "volume": "q.volume AS volume",
-            "turnover": "CASE WHEN q.turnover IS NULL THEN NULL ELSE q.turnover / 10000.0 END AS turnover",
+            "open": "d.open / 100.0 AS open",
+            "high": "d.high / 100.0 AS high",
+            "low": "d.low / 100.0 AS low",
+            "close": "d.close / 100.0 AS close",
+            "volume": "d.volume AS volume",
+            "amount": "d.amount AS amount",
+            "turnover": "CASE WHEN d.turnover IS NULL THEN NULL ELSE d.turnover / 10000.0 END AS turnover",
         }
         return mapping[column]
 

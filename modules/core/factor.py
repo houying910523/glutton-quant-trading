@@ -1,7 +1,7 @@
 from abc import abstractmethod
 from typing import Protocol, Any, Mapping
 
-import pandas as pd
+import polars as pl
 
 from .context import Context
 
@@ -17,4 +17,4 @@ class Factor(Protocol):
     def inputs(self) -> list[str]: ...
 
     @abstractmethod
-    def compute(self, context: Context) -> dict[str, pd.Series]: ...
+    def compute(self, context: Context) -> dict[str, pl.Series]: ...

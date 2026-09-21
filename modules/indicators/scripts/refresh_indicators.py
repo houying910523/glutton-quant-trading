@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import json
-import sys
 from collections.abc import Callable
 from datetime import date, timedelta
 from pathlib import Path
@@ -29,7 +28,7 @@ app = typer.Typer(
 )
 
 
-def refresh_factors(
+def refresh_indicators(
     database: SQLiteDatabase,
     indicator_root: Path,
     *,
@@ -49,9 +48,9 @@ def refresh_factors(
     with RepositorySession(database) as repositories:
         indicator_definitions = _load_indicator_definitions(repositories, indicator_ids)
 
-    total_months = sum(
+    total_years = sum(
         len(
-            _pending_month_ranges(
+            _pending_year_ranges(
                 indicator_definition,
                 _resolve_effective_start_date(
                     indicator_definition,
@@ -66,12 +65,10 @@ def refresh_factors(
         for indicator_definition in indicator_definitions
     )
     progress = tqdm(
-        total=total_months,
+        total=total_years,
         ncols=100,
-        desc="Refreshing factors",
-        unit="month",
-        leave=True,
-        disable=not sys.stderr.isatty(),
+        desc="Refreshing Indicators",
+        unit="year",
     )
 
     results: list[dict[str, Any]] = []
@@ -81,10 +78,10 @@ def refresh_factors(
                 f"{indicator_definition.indicator_id}@{indicator_definition.version}"
             )
 
-            def on_month_processed(_: date) -> None:
+            def on_year_processed(_: date) -> None:
                 progress.update(1)
 
-            def on_month_materialized(
+            def on_year_materialized(
                 materialized_date: date,
                 *,
                 current_indicator_definition: IndicatorDefinition = (
@@ -108,7 +105,7 @@ def refresh_factors(
                 end_date,
                 force=force,
             )
-            result = refresh_indicator_definition(
+            result = refresh_indicator(
                 indicator_definition,
                 loader,
                 store,
@@ -116,8 +113,8 @@ def refresh_factors(
                 end_date=end_date,
                 instruments=instruments,
                 force=force,
-                on_month_processed=on_month_processed,
-                on_month_materialized=on_month_materialized,
+                on_year_processed=on_year_processed,
+                on_year_materialized=on_year_materialized,
             )
             results.append(result)
     finally:
@@ -125,7 +122,7 @@ def refresh_factors(
     return results
 
 
-def refresh_indicator_definition(
+def refresh_indicator(
     indicator_definition: IndicatorDefinition,
     loader: StockDailyService,
     store: IndicatorStore,
@@ -134,8 +131,8 @@ def refresh_indicator_definition(
     end_date: date,
     instruments: list[str] | None = None,
     force: bool = False,
-    on_month_processed: Callable[[date], None] | None = None,
-    on_month_materialized: Callable[[date], None] | None = None,
+    on_year_processed: Callable[[date], None] | None = None,
+    on_year_materialized: Callable[[date], None] | None = None,
 ) -> dict[str, Any]:
     indicator = load_indicator(indicator_definition)
     spec = indicator.spec(indicator_definition.params)
@@ -144,13 +141,13 @@ def refresh_indicator_definition(
     partitions_written: list[str] = []
     rows_written = 0
     last_materialized_date = parse_date(indicator_definition.last_materialized_date)
-    pending_month_ranges = _pending_month_ranges(
+    pending_year_ranges = _pending_year_ranges(
         indicator_definition,
         start_date,
         end_date,
         force=force,
     )
-    for month_start, partition_start_date, partition_end_date in pending_month_ranges:
+    for year_start, partition_start_date, partition_end_date in pending_year_ranges:
         load_start = partition_start_date - timedelta(days=_history_padding_days(spec))
         stock_daily = loader.load_stock_daily(
             start_date=load_start,
@@ -168,12 +165,11 @@ def refresh_indicator_definition(
             )
             if not output.is_empty():
                 frame_to_write = output
-                if partition_start_date > month_start:
-                    existing_partition = _read_existing_month_partition(
+                if partition_start_date > year_start:
+                    existing_partition = _read_existing_year_partition(
                         store,
                         storage_key=indicator_definition.storage_key,
-                        year=month_start.year,
-                        month=month_start.month,
+                        year=year_start.year,
                     )
                     if (
                         existing_partition is not None
@@ -184,11 +180,10 @@ def refresh_indicator_definition(
                             output,
                             output_columns=indicator_definition.output_columns,
                         )
-                path = store.write_month_partition(
+                path = store.write_year_partition(
                     storage_key=indicator_definition.storage_key,
                     frame=frame_to_write,
-                    year=month_start.year,
-                    month=month_start.month,
+                    year=year_start.year,
                 )
                 partitions_written.append(str(path))
                 rows_written += output.height
@@ -198,11 +193,11 @@ def refresh_indicator_definition(
                     or partition_last_date > last_materialized_date
                 ):
                     last_materialized_date = partition_last_date
-                    if on_month_materialized is not None:
-                        on_month_materialized(partition_last_date)
+                    if on_year_materialized is not None:
+                        on_year_materialized(partition_last_date)
 
-        if on_month_processed is not None:
-            on_month_processed(month_start)
+        if on_year_processed is not None:
+            on_year_processed(year_start)
 
     return {
         "indicator_id": indicator_definition.indicator_id,
@@ -263,7 +258,7 @@ def main(
     resolved_db_path = resolve_project_path(DEFAULT_DB_PATH)
     resolved_indicator_root = resolve_project_path(DEFAULT_INDICATOR_ROOT)
     database = SQLiteDatabase(resolved_db_path)
-    results = refresh_factors(
+    results = refresh_indicators(
         database,
         resolved_indicator_root,
         indicator_ids=None if all_active else indicator_id,
@@ -345,7 +340,7 @@ def _emit_refresh_logs(
     instrument_scope = ", ".join(instruments or []) if instruments else "ALL"
     typer.echo(
         (
-            "[refresh_factors] "
+            "[refresh_indicators] "
             f"mode={refresh_mode} target={target} "
             f"date_range={start_date.isoformat()}..{end_date.isoformat()} "
             f"force={force} instruments={instrument_scope} "
@@ -362,7 +357,7 @@ def _emit_refresh_logs(
         total_partitions += partition_count
         typer.echo(
             (
-                "[refresh_factors] "
+                "[refresh_indicators] "
                 f"indicator_id={result['indicator_id']} version={result['version']} "
                 f"rows_written={result['rows_written']} partitions_written={partition_count} "
                 f"last_materialized_date={result['last_materialized_date']} "
@@ -373,8 +368,8 @@ def _emit_refresh_logs(
 
     typer.echo(
         (
-            "[refresh_factors] "
-            f"factors={len(results)} total_rows_written={total_rows} "
+            "[refresh_indicators] "
+            f"indicators={len(results)} total_rows_written={total_rows} "
             f"total_partitions_written={total_partitions}"
         ),
         err=True,
@@ -399,7 +394,7 @@ def _resolve_effective_start_date(
     return start_date
 
 
-def _pending_month_ranges(
+def _pending_year_ranges(
     indicator_definition: IndicatorDefinition,
     start_date: date,
     end_date: date,
@@ -412,11 +407,11 @@ def _pending_month_ranges(
     if last_materialized_date is None:
         return [
             (
-                month_start,
-                month_start,
-                min(_month_end(month_start), end_date),
+                year_start,
+                max(year_start, start_date),
+                min(_year_end(year_start), end_date),
             )
-            for month_start in _iter_month_starts(start_date, end_date)
+            for year_start in _iter_year_starts(start_date, end_date)
         ]
 
     resume_date = max(start_date, last_materialized_date + timedelta(days=1))
@@ -424,32 +419,28 @@ def _pending_month_ranges(
         return []
 
     pending_ranges: list[tuple[date, date, date]] = []
-    first_month_start = date(resume_date.year, resume_date.month, 1)
-    for month_start in _iter_month_starts(resume_date, end_date):
+    first_year_start = date(resume_date.year, 1, 1)
+    for year_start in _iter_year_starts(resume_date, end_date):
         partition_start_date = (
-            resume_date if month_start == first_month_start else month_start
+            resume_date if year_start == first_year_start else year_start
         )
         pending_ranges.append(
             (
-                month_start,
+                year_start,
                 partition_start_date,
-                min(_month_end(month_start), end_date),
+                min(_year_end(year_start), end_date),
             )
         )
     return pending_ranges
 
 
-def _read_existing_month_partition(
+def _read_existing_year_partition(
     store: IndicatorStore,
     *,
     storage_key: str,
     year: int,
-    month: int,
 ) -> pl.DataFrame | None:
-    path = store.partition_path(storage_key, year=year, month=month)
-    if not path.exists():
-        return None
-    return pl.read_parquet(path)
+    return store.read_year_partition(storage_key=storage_key, year=year)
 
 
 def _merge_partition_frames(
@@ -520,24 +511,18 @@ def _history_padding_days(spec: IndicatorSpec) -> int:
     return max(required * 3, required + 31)
 
 
-def _iter_month_starts(start_date: date, end_date: date) -> list[date]:
-    current = date(start_date.year, start_date.month, 1)
-    month_limit = date(end_date.year, end_date.month, 1)
+def _iter_year_starts(start_date: date, end_date: date) -> list[date]:
+    current = date(start_date.year, 1, 1)
+    year_limit = date(end_date.year, 1, 1)
     values: list[date] = []
-    while current <= month_limit:
+    while current <= year_limit:
         values.append(current)
-        current = _next_month(current)
+        current = date(current.year + 1, 1, 1)
     return values
 
 
-def _next_month(value: date) -> date:
-    if value.month == 12:
-        return date(value.year + 1, 1, 1)
-    return date(value.year, value.month + 1, 1)
-
-
-def _month_end(value: date) -> date:
-    return _next_month(date(value.year, value.month, 1)) - timedelta(days=1)
+def _year_end(value: date) -> date:
+    return date(value.year, 12, 31)
 
 
 if __name__ == "__main__":

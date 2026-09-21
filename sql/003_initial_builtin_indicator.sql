@@ -90,6 +90,44 @@ INSERT INTO indicators (
     created_at,
     updated_at
 ) VALUES (
+    'atr_14',
+    'v1',
+    'ATR(14)',
+    'volatility',
+    'modules.indicators.builtin.volatility:AverageTrueRangeIndicator',
+    '{"window":14}',
+    '["atr_14"]',
+    'atr/v1/window_14',
+    '默认内置 ATR 指标定义',
+    'active',
+    '2025-01-01 00:00:00',
+    '2025-01-01 00:00:00'
+)
+ON CONFLICT(indicator_id, version) DO UPDATE SET
+    indicator_name = excluded.indicator_name,
+    category = excluded.category,
+    compute_ref = excluded.compute_ref,
+    params = excluded.params,
+    output_columns = excluded.output_columns,
+    storage_key = excluded.storage_key,
+    description = excluded.description,
+    status = excluded.status,
+    updated_at = excluded.updated_at;
+
+INSERT INTO indicators (
+    indicator_id,
+    version,
+    indicator_name,
+    category,
+    compute_ref,
+    params,
+    output_columns,
+    storage_key,
+    description,
+    status,
+    created_at,
+    updated_at
+) VALUES (
     'boll_20_2',
     'v1',
     '布林带(20,2)',

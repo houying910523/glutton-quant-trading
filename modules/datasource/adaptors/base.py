@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from typing import Literal, Protocol
 
-from modules.repositories.models import StockRecord, DailyQuoteRecord
+from modules.repositories.models import StockInfoRecord, StockDailyRecord
 
 AdapterType = Literal["akshare", "tushare"]
 
 
 class StockFetcher(Protocol):
-    def fetch(self) -> list[StockRecord]: ...
+    def fetch(self) -> list[StockInfoRecord]: ...
 
 
 class TradingCalendarFetcher(Protocol):
@@ -23,7 +23,7 @@ class StockDailyQuoteFetcher(Protocol):
         end_date: str,
         stock_id: int,
         batch_id: int,
-    ) -> list[DailyQuoteRecord]: ...
+    ) -> list[StockDailyRecord]: ...
 
 
 def create_stock_fetcher(

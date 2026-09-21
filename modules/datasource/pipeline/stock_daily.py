@@ -8,7 +8,7 @@ from typing import Any, Generator
 from modules.datasource.adaptors import AdapterType
 from modules.datasource.pipeline.base import BasePipeline, PipelineOutcome
 from modules.repositories import RepositorySession
-from modules.repositories.models import DailyQuoteRecord, IngestionBatchRecord
+from modules.repositories.models import StockDailyRecord, IngestionBatchRecord
 from modules.utils.time_util import now_shanghai, parse_date
 
 DEFAULT_HISTORY_START_DATE = "1991-01-01"
@@ -110,7 +110,7 @@ class StockDailyPipeline(BasePipeline):
         adaptor_type: AdapterType,
         tasks: list[Task],
         batch: IngestionBatchRecord,
-    ) -> Generator[tuple[Task, list[DailyQuoteRecord]], None, None]:
+    ) -> Generator[tuple[Task, list[StockDailyRecord]], None, None]:
         if not tasks:
             return
 
@@ -175,7 +175,7 @@ class StockDailyPipeline(BasePipeline):
     def _upsert_records(
         cls,
         repositories: RepositorySession,
-        records: list[DailyQuoteRecord],
+        records: list[StockDailyRecord],
     ) -> None:
         repositories.stock_daily.upsert_many(records)
         repositories.commit()

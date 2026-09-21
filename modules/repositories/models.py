@@ -41,21 +41,7 @@ class IngestionBatchRecord(BaseModel):
     updated_at: str
 
 
-class DataQualityIssueRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    id: int | None = None
-    ingestion_batch_id: int
-    resource_type: str
-    severity: Severity
-    issue_code: str
-    business_key: str
-    message: str
-    raw_payload: dict[str, Any] | None = None
-    created_at: str
-
-
-class StockRecord(BaseModel):
+class StockInfoRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int | None = None
@@ -64,9 +50,8 @@ class StockRecord(BaseModel):
     symbol: str
     ticker: str | None = None
     name: str
-    asset_type: str
-    currency: str
-    lot_size: int
+    currency: str = "CNY"
+    lot_size: int = 100
     listed_at: date | None = None
     delisted_at: date | None = None
     status: str
@@ -74,7 +59,7 @@ class StockRecord(BaseModel):
     updated_at: datetime
 
     @model_validator(mode="after")
-    def validate_dates(self) -> "StockRecord":
+    def validate_dates(self) -> "StockInfoRecord":
         if self.delisted_at and self.listed_at and self.listed_at > self.delisted_at:
             raise ValueError("listed_at must be <= delisted_at")
         return self
@@ -91,7 +76,7 @@ class TradingCalendarRecord(BaseModel):
     updated_at: datetime
 
 
-class DailyQuoteRecord(BaseModel):
+class StockDailyRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     id: int | None = None
@@ -109,7 +94,7 @@ class DailyQuoteRecord(BaseModel):
     updated_at: datetime
 
     @model_validator(mode="after")
-    def validate_ohlc(self) -> "DailyQuoteRecord":
+    def validate_ohlc(self) -> "StockDailyRecord":
         if self.open <= 0 or self.high <= 0 or self.low <= 0 or self.close <= 0:
             raise ValueError("OHLC must be positive")
         if self.high < self.open or self.high < self.close or self.high < self.low:

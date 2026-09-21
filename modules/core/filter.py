@@ -8,7 +8,6 @@ class Filter(Protocol):
     name: str
     params: Mapping[str, Any]
 
-    @abstractmethod
     def dependencies(self) -> list[str]:
         return []
 
