@@ -103,7 +103,7 @@ class BaseAkshareAdapterMixin[T](ABC):
                 frame = function()
                 if frame is None:
                     return []
-                return list(frame.to_dict(orient="records"))
+                return frame.to_dicts()
             except Exception as exc:  # pragma: no cover - depends on remote client
                 last_error = exc
                 if attempt == 2:

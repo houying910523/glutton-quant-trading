@@ -64,6 +64,16 @@ class StockInfoRecord(BaseModel):
             raise ValueError("listed_at must be <= delisted_at")
         return self
 
+    def instrument_id(self) -> str:
+        exchange_suffix = {
+            "SSE": "SH",
+            "SZSE": "SZ",
+        }
+        suffix = exchange_suffix.get(self.exchange)
+        if suffix is None:
+            return self.symbol
+        return f"{self.symbol}.{suffix}"
+
 
 class TradingCalendarRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
@@ -89,9 +99,9 @@ class StockDailyRecord(BaseModel):
     volume: int
     amount: int
     turnover: int | None = None
-    ingestion_batch_id: int
-    ingested_at: datetime
-    updated_at: datetime
+    ingestion_batch_id: int | None = None
+    ingested_at: datetime | None = None
+    updated_at: datetime | None = None
 
     @model_validator(mode="after")
     def validate_ohlc(self) -> "StockDailyRecord":

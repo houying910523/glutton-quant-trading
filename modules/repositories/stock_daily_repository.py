@@ -48,17 +48,6 @@ class StockDailyRepository(SQLiteRepository):
             payload,
         )
 
-    def list_loaded_trade_dates(self, *, start_date: str, end_date: str) -> set[str]:
-        rows = self._connection.execute(
-            """
-            SELECT DISTINCT trade_date
-            FROM stock_daily
-            WHERE trade_date BETWEEN ? AND ?
-            """,
-            (start_date, end_date),
-        ).fetchall()
-        return {row["trade_date"] for row in rows}
-
     def get_latest_trade_date(self, *, stock_id: int) -> str | None:
         row = self._connection.execute(
             """
@@ -90,3 +79,27 @@ class StockDailyRepository(SQLiteRepository):
             (stock_id, start_date, end_date),
         ).fetchall()
         return [row["trade_date"] for row in rows]
+
+    def list_stock_daily(
+        self, stock_id: int, start_date: str, end_date: str
+    ) -> list[StockDailyRecord]:
+        rows = self._connection.execute(
+            """
+            SELECT
+                stock_id,
+                trade_date,
+                open,
+                high,
+                low,
+                close,
+                volume,
+                amount,
+                turnover
+            FROM stock_daily
+            WHERE stock_id = ?
+              AND trade_date BETWEEN ? AND ?
+            ORDER BY trade_date
+            """,
+            (stock_id, start_date, end_date),
+        ).fetchall()
+        return [StockDailyRecord(**row) for row in rows]

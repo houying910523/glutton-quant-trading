@@ -8,6 +8,17 @@ from modules.repositories.base import SQLiteRepository
 
 
 class StockInfoRepository(SQLiteRepository):
+    def get(self, stock_id: int) -> StockInfoRecord | None:
+        row = self._connection.execute(
+            """
+            SELECT * FROM stock_info WHERE id = ?
+            """,
+            (stock_id,),
+        ).fetchone()
+        if row is None:
+            return None
+        return StockInfoRecord(**row)
+
     def upsert_many(self, records: list[StockInfoRecord]) -> None:
         payload = [
             (
