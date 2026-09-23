@@ -1,13 +1,12 @@
 from __future__ import annotations
 
+import pandas as pd
 import time
 from abc import ABC, abstractmethod
 from datetime import date
 from decimal import Decimal, ROUND_HALF_UP
 from threading import Lock
 from typing import Any, Callable, Iterable, TypeVar
-
-import polars as pl
 
 from modules.datasource.adaptors.base import (
     StockFetcher,
@@ -95,7 +94,7 @@ class BaseAkshareAdapterMixin[T](ABC):
         time.sleep(seconds)
 
     def _call_frame(
-        self, function: Callable[[], pl.DataFrame | None]
+        self, function: Callable[[], pd.DataFrame | None]
     ) -> list[dict[str, Any]]:
         last_error: Exception | None = None
         for attempt in range(3):
@@ -103,7 +102,7 @@ class BaseAkshareAdapterMixin[T](ABC):
                 frame = function()
                 if frame is None:
                     return []
-                return frame.to_dicts()
+                return frame.to_dict(orient="records")
             except Exception as exc:  # pragma: no cover - depends on remote client
                 last_error = exc
                 if attempt == 2:

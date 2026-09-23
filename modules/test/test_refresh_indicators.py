@@ -5,10 +5,7 @@ from datetime import date
 from pathlib import Path
 from unittest.mock import MagicMock, patch
 
-try:
-    import polars as pl
-except ModuleNotFoundError:  # pragma: no cover - optional at test runtime
-    pl = None
+import polars as pl
 
 from modules.indicators.models import IndicatorDefinition, IndicatorSpec
 

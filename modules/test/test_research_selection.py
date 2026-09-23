@@ -1,5 +1,6 @@
-from datetime import date
+from datetime import date, datetime, timedelta
 import unittest
+from unittest.mock import patch
 
 try:
     import polars as pl
@@ -35,3 +36,41 @@ class SelectionGroupStockDailyDataTest(unittest.TestCase):
             [10.0, 10.5],
         )
         self.assertEqual(grouped_data[1].data["close"].to_list(), [20.5])
+
+
+@unittest.skipIf(pl is None, "polars is not installed")
+class SelectionRunTest(unittest.TestCase):
+    from modules.research import selection as selection_module
+
+    @patch.object(selection_module, "StockDailyService")
+    @patch.object(selection_module, "now_shanghai")
+    def test_run_loads_enough_history_for_sixty_day_filters(
+        self,
+        mock_now_shanghai,
+        mock_stock_daily_service,
+    ) -> None:
+        from modules.research.selection import LOOKBACK_DAYS, Selection
+
+        mock_now_shanghai.return_value = datetime(2024, 4, 30, 15, 0, 0)
+        mock_stock_daily_service.return_value.load_stock_daily.return_value = (
+            pl.DataFrame(
+                schema={
+                    "trade_date": pl.Date,
+                    "instrument_id": pl.Utf8,
+                    "open": pl.Float64,
+                    "high": pl.Float64,
+                    "low": pl.Float64,
+                    "close": pl.Float64,
+                    "volume": pl.Int64,
+                    "turnover": pl.Float64,
+                }
+            )
+        )
+
+        selection = Selection(database=object(), filters=[])
+        selection.run()
+
+        mock_stock_daily_service.return_value.load_stock_daily.assert_called_once_with(
+            start_date=date(2024, 4, 30) - timedelta(days=LOOKBACK_DAYS),
+            end_date=date(2024, 4, 30),
+        )

@@ -6,8 +6,8 @@ from modules.app import App
 from modules.core import Filter
 from modules.core.context import StockDailyData
 from modules.datasource.service.stock_daily_service import StockDailyService
+from modules.filters.box_consolidation import BoxConsolidationFilter
 from modules.filters.main_board import MainBoardFilter
-from modules.filters.turnover import TurnoverFilter
 from modules.repositories.database import SQLiteDatabase
 from modules.utils.time_util import now_shanghai
 
@@ -57,8 +57,8 @@ if __name__ == "__main__":
     database = app.database
     filters = [
         MainBoardFilter(),
-        TurnoverFilter(),
-        # BoxOscillationGainFilter()
+        # TurnoverFilter(),
+        BoxConsolidationFilter(),
     ]
     selection = Selection(database, filters)
     data = selection.run()
