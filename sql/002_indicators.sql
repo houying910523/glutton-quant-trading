@@ -15,6 +15,7 @@ CREATE TABLE IF NOT EXISTS indicators (
         status IN ('active', 'deprecated', 'disabled')
     ),
     last_materialized_date TEXT,
+    attach_kline INTEGER DEFAULT 0,
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (indicator_id, version),

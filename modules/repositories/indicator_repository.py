@@ -200,6 +200,7 @@ class IndicatorRepository(SQLiteRepository):
             description=row["description"],
             status=row["status"],
             last_materialized_date=row["last_materialized_date"],
+            attach_kline=int(row["attach_kline"]),
             created_at=row["created_at"],
             updated_at=row["updated_at"],
         )

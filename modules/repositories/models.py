@@ -55,6 +55,7 @@ class StockInfoRecord(BaseModel):
     listed_at: date | None = None
     delisted_at: date | None = None
     status: str
+    optional: int = 0
     created_at: datetime
     updated_at: datetime
 
@@ -64,6 +65,7 @@ class StockInfoRecord(BaseModel):
             raise ValueError("listed_at must be <= delisted_at")
         return self
 
+    @property
     def instrument_id(self) -> str:
         exchange_suffix = {
             "SSE": "SH",
@@ -150,6 +152,7 @@ class IndicatorRecord(BaseModel):
     description: str | None = None
     status: IndicatorDefinitionStatus = "active"
     last_materialized_date: str | None = None
+    attach_kline: int = 0
     created_at: str
     updated_at: str
 

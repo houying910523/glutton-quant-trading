@@ -26,7 +26,7 @@ class App:
 
         load_controllers()
         for path, router in routers:
-            self.api.include_router(router, prefix=path)
+            self.api.include_router(router, prefix="/api" + path)
 
 
 runtime = App()

@@ -56,7 +56,7 @@ class IndicatorService:
 
         frame = self._query_dataset(
             existing_selections,
-            instrument_id=stock_info.instrument_id(),
+            instrument_id=stock_info.instrument_id,
             start_date=normalized_start,
             end_date=normalized_end,
             output_columns=output_columns,

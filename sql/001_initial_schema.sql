@@ -45,6 +45,7 @@ CREATE TABLE IF NOT EXISTS stock_info (
     listed_at TEXT,
     delisted_at TEXT,
     status TEXT NOT NULL CHECK (status IN ('active', 'delisted')),
+    optional INTEGER NOT NULL DEFAULT 0 CHECK (optional IN (0, 1)),
     created_at TEXT NOT NULL,
     updated_at TEXT NOT NULL,
     UNIQUE (market, exchange, symbol),

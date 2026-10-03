@@ -113,9 +113,10 @@ class StockInfoRepository(SQLiteRepository):
             for row in rows
         ]
 
-    def list_symbols(
-        self, symbol: str, name: str, page_no: int = 1, page_size: int = 40
-    ) -> list[StockInfoRecord]:
+    @classmethod
+    def _build_list_conditions(
+        cls, symbol: str, name: str, optional: int | None = None
+    ) -> tuple[list[str], list[object]]:
         conditions = ["status = 'active'"]
         parameters: list[object] = []
         if symbol:
@@ -125,12 +126,36 @@ class StockInfoRepository(SQLiteRepository):
             conditions.append("name LIKE ?")
             parameters.append(f"%{name}%")
 
+        if optional is not None:
+            conditions.append("optional = ?")
+            parameters.append(optional)
+        return conditions, parameters
+
+    def count_stock(self, symbol: str, name: str, optional: int | None = None) -> int:
+        conditions, parameters = self._build_list_conditions(symbol, name, optional)
+        return self._connection.execute(
+            f"""
+            SELECT COUNT(*) FROM stock_info
+            WHERE {" AND ".join(conditions)}
+            """,
+            parameters,
+        ).fetchone()[0]
+
+    def list_stock(
+        self,
+        symbol: str,
+        name: str,
+        optional: int | None = None,
+        page_no: int = 1,
+        page_size: int = 40,
+    ) -> list[StockInfoRecord]:
+        conditions, parameters = self._build_list_conditions(symbol, name, optional)
         parameters.append((page_no - 1) * page_size)
         parameters.append(page_size)
 
         rows = self._connection.execute(
             f"""
-                   SELECT id, symbol, listed_at, name, ticker, market, exchange, updated_at, created_at
+                   SELECT id, symbol, listed_at, name, ticker, market, exchange, updated_at, created_at, optional
                    FROM stock_info
                    WHERE {" AND ".join(conditions)}
                    ORDER BY id ASC
@@ -150,6 +175,18 @@ class StockInfoRepository(SQLiteRepository):
                 exchange=row["exchange"],
                 ticker=row["ticker"],
                 name=row["name"],
+                optional=row["optional"],
             )
             for row in rows
         ]
+
+    def update(self, stock_id: int, optional: int) -> None:
+        self._connection.execute(
+            """
+            UPDATE stock_info
+            SET optional = ?
+            WHERE id = ?
+            """,
+            (optional, stock_id),
+        )
+        self._connection.commit()

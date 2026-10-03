@@ -115,7 +115,7 @@ class BoxConsolidationCreateFilterIntegrationTest(unittest.TestCase):
 
 @unittest.skipIf(pl is None, "polars is not installed")
 class BoxConsolidationMatchFactorTest(unittest.TestCase):
-    def test_compute_returns_match_flag_for_each_stock(self) -> None:
+    def test_compute_returns_factor_frame_for_each_stock(self) -> None:
         matched_stock = _build_stock_daily_data(
             "000001.SZ",
             closes=[
@@ -150,16 +150,31 @@ class BoxConsolidationMatchFactorTest(unittest.TestCase):
         )
 
         self.assertEqual(
-            result["instrument_id"].to_list(),
+            sorted(result.keys()),
             ["000001.SZ", "600519.SH"],
         )
+        matched_frame = result["000001.SZ"]
+        unmatched_frame = result["600519.SH"]
+
         self.assertEqual(
-            result["trade_date"].to_list(),
-            [date(2024, 2, 13), date(2024, 2, 13)],
+            matched_frame.columns,
+            ["instrument_id", "trade_date", "factor_value"],
+        )
+        self.assertEqual(matched_frame.height, 44)
+        self.assertEqual(unmatched_frame.height, 44)
+        self.assertEqual(
+            matched_frame.get_column("trade_date").to_list()[-1],
+            date(2024, 2, 13),
         )
         self.assertEqual(
-            result["box_consolidation_match"].to_list(),
-            [True, False],
+            unmatched_frame.get_column("trade_date").to_list()[-1],
+            date(2024, 2, 13),
+        )
+        self.assertTrue(matched_frame.get_column("factor_value").to_list()[-1])
+        self.assertFalse(unmatched_frame.get_column("factor_value").to_list()[-1])
+        self.assertEqual(
+            matched_frame.get_column("instrument_id").unique().to_list(),
+            ["000001.SZ"],
         )
 
     def test_compute_returns_false_when_history_is_insufficient(self) -> None:
@@ -177,7 +192,12 @@ class BoxConsolidationMatchFactorTest(unittest.TestCase):
             )
         )
 
-        self.assertEqual(result["box_consolidation_match"].to_list(), [False])
+        factor_frame = result["000002.SZ"]
+        self.assertEqual(factor_frame.height, 20)
+        self.assertEqual(
+            factor_frame.get_column("factor_value").to_list(),
+            [False] * 20,
+        )
 
 
 @unittest.skipIf(pl is None, "polars is not installed")

@@ -62,6 +62,7 @@ class BoxConsolidationMatchFactor(Factor):
     name = "box_consolidation_match"
     version = "v1"
     value_type = "bool"
+    output_column = "box_consolidation_match"
 
     def __init__(self, params: Mapping[str, Any] | None = None) -> None:
         self.params = dict(params or {})
@@ -69,38 +70,54 @@ class BoxConsolidationMatchFactor(Factor):
     def inputs(self) -> list[str]:
         return ["close"]
 
-    def compute(self, context: Context) -> dict[str, pl.Series]:
-        instrument_ids: list[str] = []
-        trade_dates: list[object] = []
-        matched_values: list[bool] = []
-
+    def compute(self, context: Context) -> dict[str, pl.DataFrame]:
+        result: dict[str, pl.DataFrame] = {}
         for stock_daily_data in context.stock_daily_data:
-            frame = stock_daily_data.data.sort("trade_date")
-            if frame.height == 0:
+            factor_frame = self._compute_stock_factor_frame(stock_daily_data)
+            if factor_frame.height == 0:
                 continue
+            result[stock_daily_data.instrument_id] = factor_frame
+        return result
 
-            evaluation = self.evaluate_stock_daily_data(stock_daily_data)
-            instrument_ids.append(stock_daily_data.instrument_id)
-            trade_dates.append(frame["trade_date"][frame.height - 1])
-            matched_values.append(evaluation.matched)
+    @classmethod
+    def _compute_stock_factor_frame(
+        cls, stock_daily_data: StockDailyData
+    ) -> pl.DataFrame:
+        frame = stock_daily_data.data.sort("trade_date")
+        if frame.height == 0:
+            return pl.DataFrame(
+                schema={
+                    "instrument_id": pl.Utf8,
+                    "trade_date": pl.Date,
+                    "factor_value": pl.Boolean,
+                }
+            )
 
-        return {
-            "trade_date": pl.Series("trade_date", trade_dates, dtype=pl.Date),
-            "instrument_id": pl.Series("instrument_id", instrument_ids, dtype=pl.Utf8),
-            self.name: pl.Series(self.name, matched_values, dtype=pl.Boolean),
-        }
+        closes = [float(value) for value in frame["close"].to_list()]
+        factor_values = [
+            cls.evaluate_closes(closes[: index + 1]).matched
+            for index in range(len(closes))
+        ]
+        return pl.DataFrame(
+            {
+                "instrument_id": pl.Series(
+                    "instrument_id",
+                    [stock_daily_data.instrument_id] * frame.height,
+                    dtype=pl.Utf8,
+                ),
+                "trade_date": frame["trade_date"],
+                cls.output_column: pl.Series(
+                    factor_values,
+                    dtype=pl.Boolean,
+                ),
+            }
+        )
 
     @classmethod
     def matches(cls, stock_daily_data: StockDailyData) -> bool:
-        return cls.evaluate_stock_daily_data(stock_daily_data).matched
-
-    @classmethod
-    def evaluate_stock_daily_data(
-        cls, stock_daily_data: StockDailyData
-    ) -> EvaluationResult:
         frame = stock_daily_data.data.sort("trade_date").tail(INPUT_WINDOW)
         closes = [float(value) for value in frame["close"].to_list()]
-        return cls.evaluate_closes(closes)
+        return cls.evaluate_closes(closes).matched
 
     @classmethod
     def evaluate_closes(cls, closes: list[float]) -> EvaluationResult:

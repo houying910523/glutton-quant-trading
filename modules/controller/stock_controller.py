@@ -1,6 +1,8 @@
-from pydantic import BaseModel
+from typing import Optional
 
-from modules.controller.base import rest_controller, get_mapping
+
+from modules.controller.base import rest_controller, get_mapping, post_mapping
+from modules.controller.object import StockOptionalRequest, StockDailyRow
 from modules.repositories import RepositorySession
 from modules.repositories.database import SQLiteDatabase
 from modules.utils.time_util import format_date
@@ -12,12 +14,21 @@ class StockController:
         super().__init__()
         self.database = SQLiteDatabase()
 
-    @get_mapping("/symbols")
-    def list_symbols(
-        self, symbol: str = "", name: str = "", page_no: int = 1, page_size: int = 40
+    @get_mapping("/list")
+    def list_stocks(
+        self,
+        symbol: str = "",
+        name: str = "",
+        optional: Optional[int] = None,
+        page_no: int = 1,
+        page_size: int = 40,
     ):
         with RepositorySession(self.database) as session:
-            return session.stock_info.list_symbols(symbol, name, page_no, page_size)
+            stocks = session.stock_info.list_stock(
+                symbol, name, optional, page_no, page_size
+            )
+            total = session.stock_info.count_stock(symbol, name, optional)
+            return {"stocks": stocks, "total": total}
 
     @get_mapping("/daily")
     def get_stock_daily(self, stock_id: int, start_date: str, end_date: str):
@@ -38,14 +49,18 @@ class StockController:
             for row in rows
         ]
 
-
-class StockDailyRow(BaseModel):
-    stock_id: int
-    trade_date: str
-    open: float
-    high: float
-    low: float
-    close: float
-    volume: int
-    amount: int
-    turnover: float
+    @post_mapping("/optional")
+    def optional(self, request: StockOptionalRequest) -> bool:
+        stock_id = request.stock_id
+        action = request.action
+        with RepositorySession(self.database) as session:
+            stock_info = session.stock_info.get(stock_id)
+            if stock_info is None:
+                return False
+            if action == "add":
+                session.stock_info.update(stock_id, optional=1)
+            elif action == "remove":
+                session.stock_info.update(stock_id, optional=0)
+            else:
+                raise ValueError(f"Invalid action: {action}")
+            return True
