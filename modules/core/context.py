@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
 
 import polars as pl
+from pydantic import BaseModel
 
 from modules.repositories.models import StockInfoRecord
 
@@ -17,3 +18,10 @@ class Context:
     end_date: str
     stock_daily_data: list[StockDailyData] = field(default_factory=list)
     stocks: dict[str, StockInfoRecord] = field(default_factory=dict)
+
+
+class ParamsProperty(BaseModel):
+    name: str
+    type: str
+    default: str | int | float | None = None
+    description: str = ""

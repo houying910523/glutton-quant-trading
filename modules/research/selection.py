@@ -3,7 +3,7 @@ from datetime import timedelta
 import polars as pl
 
 from modules.app import App
-from modules.core import Filter
+from modules.filters import Filter
 from modules.core.context import StockDailyData
 from modules.datasource.service.stock_daily_service import StockDailyService
 from modules.filters.box_consolidation import BoxConsolidationFilter
@@ -19,11 +19,15 @@ class Selection:
     A selection of stocks based on a filter.
     """
 
-    def __init__(self, database: SQLiteDatabase, filters: list[Filter]):
+    def __init__(
+        self,
+        database: SQLiteDatabase,
+    ):
         self.database = database
-        self.filters = filters
 
-    def run(self) -> list[StockDailyData]:
+    def run(
+        self, filters: list[Filter], optional: bool = False
+    ) -> list[StockDailyData]:
         """Run the selection."""
         stock_daily_service = StockDailyService(self.database)
         end_date = now_shanghai().date()
@@ -31,9 +35,10 @@ class Selection:
         data = stock_daily_service.load_stock_daily(
             start_date=start_date,
             end_date=end_date,
+            optional=optional,
         )
         stock_daily_data = self._group_stock_daily_data(data)
-        for _filter in self.filters:
+        for _filter in filters:
             stock_daily_data = _filter.filter(stock_daily_data)
         return stock_daily_data
 
@@ -60,8 +65,8 @@ if __name__ == "__main__":
         # TurnoverFilter(),
         BoxConsolidationFilter(),
     ]
-    selection = Selection(database, filters)
-    data = selection.run()
+    selection = Selection(database)
+    data = selection.run(filters, optional=False)
     for item in data:
         print(item.instrument_id)
 

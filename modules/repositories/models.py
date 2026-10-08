@@ -7,8 +7,8 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Severity = Literal["warn", "reject"]
 BatchStatus = Literal["pending", "running", "success", "failed"]
-IndicatorDefinitionStatus = Literal["active", "deprecated", "disabled"]
-IndicatorCategory = Literal[
+Status = Literal["active", "deprecated", "disabled"]
+Category = Literal[
     "trend",
     "momentum",
     "volatility",
@@ -120,23 +120,6 @@ class StockDailyRecord(BaseModel):
         return self
 
 
-class RawManifestRecord(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    ingestion_batch_id: int
-    batch_key: str
-    source_name: str
-    resource_type: str
-    sync_mode: str
-    request_params: dict[str, Any]
-    started_at: str
-    finished_at: str | None = None
-    row_count_raw: int = 0
-    status: str
-    records_path: str | None = None
-    records_sha256: str | None = None
-
-
 class IndicatorRecord(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
@@ -144,13 +127,13 @@ class IndicatorRecord(BaseModel):
     indicator_id: str
     version: str = "v1"
     indicator_name: str
-    category: IndicatorCategory
+    category: Category
     compute_ref: str
     params: dict[str, Any] = Field(default_factory=dict)
     output_columns: list[str] = Field(default_factory=list)
     storage_key: str
     description: str | None = None
-    status: IndicatorDefinitionStatus = "active"
+    status: Status = "active"
     last_materialized_date: str | None = None
     attach_kline: int = 0
     created_at: str
@@ -169,3 +152,19 @@ class IndicatorRecord(BaseModel):
         if not self.output_columns:
             raise ValueError("output_columns must not be empty")
         return self
+
+
+class FactorMetaRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int | None = None
+    name: str
+    version: str = "v1"
+    category: Category
+    description: str | None = None
+    impl_ref: str
+    frequency: str = "1d"
+    params: dict[str, Any] = Field(default_factory=dict)
+    status: Status = "active"
+    created_at: str
+    updated_at: str

@@ -19,6 +19,15 @@ class StockInfoRepository(SQLiteRepository):
             return None
         return StockInfoRecord(**row)
 
+    def find_by_symbols(self, symbols: list[str]) -> list[StockInfoRecord]:
+        rows = self._connection.execute(
+            f"""
+            SELECT * FROM stock_info WHERE symbol IN ({",".join(["?"] * len(symbols))})
+            """,
+            symbols,
+        ).fetchall()
+        return [StockInfoRecord(**row) for row in rows]
+
     def upsert_many(self, records: list[StockInfoRecord]) -> None:
         payload = [
             (

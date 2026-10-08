@@ -11,7 +11,6 @@ from modules.utils.time_util import format_date
 @rest_controller("/stock")
 class StockController:
     def __init__(self):
-        super().__init__()
         self.database = SQLiteDatabase()
 
     @get_mapping("/list")

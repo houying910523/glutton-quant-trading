@@ -2,8 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
-from modules.core import Filter
-from modules.core.context import StockDailyData
+from modules.core.context import StockDailyData, ParamsProperty
+from modules.filters.filter import Filter
 
 # 只检查最近 3 个交易日。
 WINDOW_SIZE = 3
@@ -11,7 +11,7 @@ WINDOW_SIZE = 3
 TURNOVER_RATE_THRESHOLD = 0.05
 
 
-class TurnoverFilter(Filter):
+class TurnoverRateFilter(Filter):
     """
     筛选最近 3 个交易日换手率都大于 5% 的股票。
 
@@ -26,25 +26,45 @@ class TurnoverFilter(Filter):
     是为了筛出近期连续活跃的标的，避免只靠某一天异常放量进入结果集。
     """
 
-    name = "three_day_turnover_rate"
-    params: dict[str, Any] = {}
+    name = "turnover_rate"
+
+    params_schema = [
+        ParamsProperty(
+            name="window_size",
+            type="int",
+            default=WINDOW_SIZE,
+            description="检查窗口大小，默认 3 天",
+        ),
+        ParamsProperty(
+            name="turnover_rate_threshold",
+            type="float",
+            default=TURNOVER_RATE_THRESHOLD,
+            description="换手率阈值，默认 5.00%",
+        ),
+    ]
+
+    def __init__(self, params: dict[str, Any] | None = None) -> None:
+        super().__init__(params)
+        self.window_size = self.params.get("window_size", WINDOW_SIZE)
+        self.turnover_rate_threshold = self.params.get(
+            "turnover_rate_threshold", TURNOVER_RATE_THRESHOLD
+        )
 
     def dependencies(self) -> list[str]:
         return []
 
     def filter(self, data: list[StockDailyData]) -> list[StockDailyData]:
-        return [item for item in data if self._matches(item)]
+        return [item for item in data if self.matches(item)]
 
-    @classmethod
-    def _matches(cls, stock_daily_data: StockDailyData) -> bool:
-        frame = stock_daily_data.data.sort("trade_date").tail(WINDOW_SIZE)
-        if frame.height < WINDOW_SIZE:
+    def matches(self, stock_daily_data: StockDailyData) -> bool:
+        frame = stock_daily_data.data.sort("trade_date").tail(self.window_size)
+        if frame.height < self.window_size:
             return False
 
         turnover_rates = frame["turnover"].to_list()
         # round(..., 2) 用来匹配“保留两位小数”的业务口径。
         # 任意一天 <= 5.00 或者缺失，都会被判定为不满足条件。
         return all(
-            value is not None and round(float(value), 2) > TURNOVER_RATE_THRESHOLD
+            value is not None and round(float(value), 2) > self.turnover_rate_threshold
             for value in turnover_rates
         )

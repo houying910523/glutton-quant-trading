@@ -16,3 +16,13 @@ class StockDailyRow(BaseModel):
     volume: int
     amount: int
     turnover: float
+
+
+class FilterParams(BaseModel):
+    filter: str
+    params: dict[str, int | float]
+
+
+class SelectionRequest(BaseModel):
+    filters: list[FilterParams] = []
+    optional: bool = False

@@ -1,10 +1,7 @@
 from __future__ import annotations
 
-from typing import Any
-
-from modules.core import Filter
 from modules.core.context import StockDailyData
-
+from modules.filters.filter import Filter
 
 SH_MAIN_BOARD_PREFIXES = ("600", "601", "603", "605")
 SZ_MAIN_BOARD_PREFIXES = ("000", "001", "002", "003")
@@ -26,7 +23,6 @@ class MainBoardFilter(Filter):
     """
 
     name = "main_board"
-    params: dict[str, Any] = {}
 
     def dependencies(self) -> list[str]:
         return []

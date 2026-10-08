@@ -18,6 +18,7 @@ class StockDailyService:
         end_date: date,
         instruments: list[str] | None = None,
         columns: list[str] | None = None,
+        optional: bool = False,
     ) -> pl.DataFrame:
         requested = self._normalize_columns(columns)
         select_items = [
@@ -34,6 +35,9 @@ class StockDailyService:
             WHERE d.trade_date BETWEEN ? AND ?
         """
         parameters: list[object] = [start_date.isoformat(), end_date.isoformat()]
+        if optional:
+            sql += " AND s.optional = ?"
+            parameters.append(1)
 
         if instruments:
             placeholders = ",".join("?" for _ in instruments)

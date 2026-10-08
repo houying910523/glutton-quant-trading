@@ -1,14 +1,10 @@
 from __future__ import annotations
 
-from typing import TYPE_CHECKING, Any
+from typing import Any
 
+from modules.filters.filter import Filter
+from modules.core.context import StockDailyData
 from modules.factors.box_consolidation import BoxConsolidationMatchFactor
-
-if TYPE_CHECKING:
-    from modules.core import Filter
-    from modules.core.context import StockDailyData
-else:
-    Filter = object
 
 
 class BoxConsolidationFilter(Filter):
@@ -25,15 +21,18 @@ class BoxConsolidationFilter(Filter):
     7. 最新收盘价仍在箱体内，或者最近 3 天至少 2 天仍在箱体内。
     """
 
-    name = "box_oscillation_regression"
-    params: dict[str, Any] = {}
+    name = "box_consolidation"
+    params_schema = BoxConsolidationMatchFactor.params_schema
+
+    def __init__(self, params: dict[str, Any] | None = None) -> None:
+        super().__init__(params)
+        self.factor = BoxConsolidationMatchFactor(self.params)
 
     def dependencies(self) -> list[str]:
-        return BoxConsolidationMatchFactor().inputs()
+        return self.factor.inputs()
 
     def filter(self, data: list[StockDailyData]) -> list[StockDailyData]:
-        return [item for item in data if self._matches(item)]
+        return [item for item in data if self.matches(item)]
 
-    @classmethod
-    def _matches(cls, stock_daily_data: StockDailyData) -> bool:
-        return BoxConsolidationMatchFactor.matches(stock_daily_data)
+    def matches(self, stock_daily_data: StockDailyData) -> bool:
+        return self.factor.matches(stock_daily_data)

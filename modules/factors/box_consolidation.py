@@ -2,14 +2,12 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 from statistics import linear_regression
-from typing import TYPE_CHECKING, Any, Mapping
+from typing import Any, Mapping
 
 import polars as pl
 
 from modules.core import Context, Factor
-
-if TYPE_CHECKING:
-    from modules.core.context import StockDailyData
+from modules.core.context import StockDailyData, ParamsProperty
 
 # 识别窗口为最近 40 个交易日；由于 MA5 需要预热，所以实际需要 44 天收盘价。
 BOX_WINDOW = 40
@@ -63,9 +61,85 @@ class BoxConsolidationMatchFactor(Factor):
     version = "v1"
     value_type = "bool"
     output_column = "box_consolidation_match"
+    params_schema = [
+        ParamsProperty(
+            name="box_window_size",
+            type="int",
+            default=BOX_WINDOW,
+            description="箱体窗口大小",
+        ),
+        ParamsProperty(
+            name="smoothing_window_size",
+            type="int",
+            default=SMOOTHING_WINDOW,
+            description="平滑窗口大小",
+        ),
+        ParamsProperty(
+            name="extrema_radius",
+            type="int",
+            default=EXTREMA_RADIUS,
+            description="波峰/波谷半径",
+        ),
+        ParamsProperty(
+            name="min_extrema_count",
+            type="int",
+            default=MIN_EXTREMA_COUNT,
+            description="波峰/波谷数量",
+        ),
+        ParamsProperty(
+            name="max_boundary_drift_ratio",
+            type="float",
+            default=MAX_BOUNDARY_DRIFT_RATIO,
+            description="边界漂移比例",
+        ),
+        ParamsProperty(
+            name="min_box_height_ratio",
+            type="float",
+            default=MIN_BOX_HEIGHT_RATIO,
+            description="箱体高度最小比例",
+        ),
+        ParamsProperty(
+            name="max_box_height_ratio",
+            type="float",
+            default=MAX_BOX_HEIGHT_RATIO,
+            description="箱体高度最大比例",
+        ),
+        ParamsProperty(
+            name="recent_window",
+            type="int",
+            default=RECENT_WINDOW,
+            description="最近窗口大小",
+        ),
+        ParamsProperty(
+            name="min_recent_inside_count",
+            type="int",
+            default=MIN_RECENT_INSIDE_COUNT,
+            description="最近窗口内仍在箱体内天数",
+        ),
+    ]
 
-    def __init__(self, params: Mapping[str, Any] | None = None) -> None:
-        self.params = dict(params or {})
+    def __init__(self, params: Mapping[str, Any]) -> None:
+        super().__init__(params)
+        self.box_window_size = params.get("box_window_size", BOX_WINDOW)
+        self.smoothing_window_size = params.get(
+            "smoothing_window_size", SMOOTHING_WINDOW
+        )
+        self.input_window_size = self.box_window_size + self.smoothing_window_size - 1
+        self.extrema_radius = params.get("extrema_radius", EXTREMA_RADIUS)
+        self.min_extrema_count = params.get("min_extrema_count", MIN_EXTREMA_COUNT)
+        self.max_boundary_drift_ratio = params.get(
+            "max_boundary_drift_ratio", MAX_BOUNDARY_DRIFT_RATIO
+        )
+        self.min_box_height_ratio = params.get(
+            "min_box_height_ratio", MIN_BOX_HEIGHT_RATIO
+        )
+        self.max_box_height_ratio = params.get(
+            "max_box_height_ratio", MAX_BOX_HEIGHT_RATIO
+        )
+        self.recent_window = params.get("recent_window", RECENT_WINDOW)
+        self.min_recent_inside_count = params.get(
+            "min_recent_inside_count", MIN_RECENT_INSIDE_COUNT
+        )
 
     def inputs(self) -> list[str]:
         return ["close"]
@@ -79,9 +153,8 @@ class BoxConsolidationMatchFactor(Factor):
             result[stock_daily_data.instrument_id] = factor_frame
         return result
 
-    @classmethod
     def _compute_stock_factor_frame(
-        cls, stock_daily_data: StockDailyData
+        self, stock_daily_data: StockDailyData
     ) -> pl.DataFrame:
         frame = stock_daily_data.data.sort("trade_date")
         if frame.height == 0:
@@ -95,7 +168,7 @@ class BoxConsolidationMatchFactor(Factor):
 
         closes = [float(value) for value in frame["close"].to_list()]
         factor_values = [
-            cls.evaluate_closes(closes[: index + 1]).matched
+            self.evaluate_closes(closes[: index + 1]).matched
             for index in range(len(closes))
         ]
         return pl.DataFrame(
@@ -106,23 +179,21 @@ class BoxConsolidationMatchFactor(Factor):
                     dtype=pl.Utf8,
                 ),
                 "trade_date": frame["trade_date"],
-                cls.output_column: pl.Series(
+                self.output_column: pl.Series(
                     factor_values,
                     dtype=pl.Boolean,
                 ),
             }
         )
 
-    @classmethod
-    def matches(cls, stock_daily_data: StockDailyData) -> bool:
-        frame = stock_daily_data.data.sort("trade_date").tail(INPUT_WINDOW)
+    def matches(self, stock_daily_data: StockDailyData) -> bool:
+        frame = stock_daily_data.data.sort("trade_date").tail(self.input_window_size)
         closes = [float(value) for value in frame["close"].to_list()]
-        return cls.evaluate_closes(closes).matched
+        return self.evaluate_closes(closes).matched
 
-    @classmethod
-    def evaluate_closes(cls, closes: list[float]) -> EvaluationResult:
+    def evaluate_closes(self, closes: list[float]) -> EvaluationResult:
         condition_results: dict[str, bool] = {
-            "history": len(closes) >= INPUT_WINDOW,
+            "history": len(closes) >= self.input_window_size,
         }
         details: dict[str, float | int | bool | None] = {
             "close_count": len(closes),
@@ -135,96 +206,98 @@ class BoxConsolidationMatchFactor(Factor):
             "latest_inside": False,
         }
         if not condition_results["history"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="insufficient_history",
             )
 
-        windowed_closes = closes[-INPUT_WINDOW:]
-        smoothed = cls._moving_average(windowed_closes, SMOOTHING_WINDOW)
-        condition_results["smoothed_window"] = len(smoothed) == BOX_WINDOW
+        windowed_closes = closes[-self.input_window_size :]
+        smoothed = self._moving_average(windowed_closes, self.smoothing_window_size)
+        condition_results["smoothed_window"] = len(smoothed) == self.box_window_size
         if not condition_results["smoothed_window"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="invalid_smoothed_window",
             )
 
-        peaks, valleys = cls._collect_local_extrema(smoothed)
+        peaks, valleys = self._collect_local_extrema(smoothed)
         details["peak_count"] = len(peaks)
         details["valley_count"] = len(valleys)
-        condition_results["peak_count"] = len(peaks) >= MIN_EXTREMA_COUNT
-        condition_results["valley_count"] = len(valleys) >= MIN_EXTREMA_COUNT
+        condition_results["peak_count"] = len(peaks) >= self.min_extrema_count
+        condition_results["valley_count"] = len(valleys) >= self.min_extrema_count
         if not condition_results["peak_count"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="insufficient_peaks",
             )
         if not condition_results["valley_count"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="insufficient_valleys",
             )
 
-        upper_boundary = cls._fit_boundary(peaks)
-        lower_boundary = cls._fit_boundary(valleys)
+        upper_boundary = self._fit_boundary(peaks)
+        lower_boundary = self._fit_boundary(valleys)
         condition_results["upper_boundary"] = upper_boundary is not None
         condition_results["lower_boundary"] = lower_boundary is not None
         if not condition_results["upper_boundary"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="upper_boundary_fit_failed",
             )
         if not condition_results["lower_boundary"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="lower_boundary_fit_failed",
             )
 
-        upper_drift_ratio = cls._boundary_drift_ratio(upper_boundary)
-        lower_drift_ratio = cls._boundary_drift_ratio(lower_boundary)
+        upper_drift_ratio = self._boundary_drift_ratio(upper_boundary)
+        lower_drift_ratio = self._boundary_drift_ratio(lower_boundary)
         details["upper_drift_ratio"] = upper_drift_ratio
         details["lower_drift_ratio"] = lower_drift_ratio
         condition_results["upper_boundary_drift"] = (
             upper_drift_ratio is not None
-            and upper_drift_ratio < MAX_BOUNDARY_DRIFT_RATIO
+            and upper_drift_ratio < self.max_boundary_drift_ratio
         )
         condition_results["lower_boundary_drift"] = (
             lower_drift_ratio is not None
-            and lower_drift_ratio < MAX_BOUNDARY_DRIFT_RATIO
+            and lower_drift_ratio < self.max_boundary_drift_ratio
         )
         if not condition_results["upper_boundary_drift"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="upper_boundary_drift_too_large",
             )
         if not condition_results["lower_boundary_drift"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="lower_boundary_drift_too_large",
             )
 
-        box_height_ratio = cls._box_height_ratio(upper_boundary, lower_boundary)
+        box_height_ratio = self._box_height_ratio(upper_boundary, lower_boundary)
         details["box_height_ratio"] = box_height_ratio
         condition_results["box_height"] = (
             box_height_ratio is not None
-            and MIN_BOX_HEIGHT_RATIO <= box_height_ratio <= MAX_BOX_HEIGHT_RATIO
+            and self.min_box_height_ratio
+            <= box_height_ratio
+            <= self.max_box_height_ratio
         )
         if not condition_results["box_height"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="box_height_out_of_range",
             )
 
-        recent_inside_count, latest_inside = cls._recent_inside_summary(
+        recent_inside_count, latest_inside = self._recent_inside_summary(
             windowed_closes,
             upper_boundary,
             lower_boundary,
@@ -232,16 +305,16 @@ class BoxConsolidationMatchFactor(Factor):
         details["recent_inside_count"] = recent_inside_count
         details["latest_inside"] = latest_inside
         condition_results["recent_inside"] = (
-            latest_inside or recent_inside_count >= MIN_RECENT_INSIDE_COUNT
+            latest_inside or recent_inside_count >= self.min_recent_inside_count
         )
         if not condition_results["recent_inside"]:
-            return cls._evaluation_result(
+            return self._evaluation_result(
                 condition_results,
                 details,
                 first_failure_reason="recent_prices_outside_box",
             )
 
-        return cls._evaluation_result(
+        return self._evaluation_result(
             condition_results,
             details,
             first_failure_reason=None,
@@ -270,16 +343,15 @@ class BoxConsolidationMatchFactor(Factor):
             for index in range(len(values) - window + 1)
         ]
 
-    @staticmethod
     def _collect_local_extrema(
-        values: list[float],
+        self, values: list[float]
     ) -> tuple[list[tuple[int, float]], list[tuple[int, float]]]:
         peaks: list[tuple[int, float]] = []
         valleys: list[tuple[int, float]] = []
-        for index in range(EXTREMA_RADIUS, len(values) - EXTREMA_RADIUS):
+        for index in range(self.extrema_radius, len(values) - self.extrema_radius):
             neighbors = (
-                values[index - EXTREMA_RADIUS : index]
-                + values[index + 1 : index + EXTREMA_RADIUS + 1]
+                values[index - self.extrema_radius : index]
+                + values[index + 1 : index + self.extrema_radius + 1]
             )
             current = values[index]
             if all(current > value for value in neighbors):
@@ -288,88 +360,81 @@ class BoxConsolidationMatchFactor(Factor):
                 valleys.append((index, current))
         return peaks, valleys
 
-    @staticmethod
-    def _fit_boundary(points: list[tuple[int, float]]) -> BoundaryLine | None:
-        if len(points) < MIN_EXTREMA_COUNT:
+    def _fit_boundary(self, points: list[tuple[int, float]]) -> BoundaryLine | None:
+        if len(points) < self.min_extrema_count:
             return None
         x_values = [float(index) for index, _ in points]
         y_values = [price for _, price in points]
         slope, intercept = linear_regression(x_values, y_values)
         return BoundaryLine(slope=slope, intercept=intercept)
 
-    @classmethod
-    def _has_valid_boundary_drift(cls, boundary: BoundaryLine) -> bool:
-        drift_ratio = cls._boundary_drift_ratio(boundary)
-        return drift_ratio is not None and drift_ratio < MAX_BOUNDARY_DRIFT_RATIO
+    def _has_valid_boundary_drift(self, boundary: BoundaryLine) -> bool:
+        drift_ratio = self._boundary_drift_ratio(boundary)
+        return drift_ratio is not None and drift_ratio < self.max_boundary_drift_ratio
 
-    @staticmethod
-    def _boundary_drift_ratio(boundary: BoundaryLine) -> float | None:
+    def _boundary_drift_ratio(self, boundary: BoundaryLine) -> float | None:
         start_value = boundary.value_at(0.0)
-        end_value = boundary.value_at(BOX_WINDOW - 1)
+        end_value = boundary.value_at(self.box_window_size - 1)
         center_value = (start_value + end_value) / 2
         if center_value <= 0:
             return None
         return abs(end_value - start_value) / center_value
 
-    @classmethod
     def _has_valid_box_height(
-        cls,
+        self,
         upper_boundary: BoundaryLine,
         lower_boundary: BoundaryLine,
     ) -> bool:
-        height_ratio = cls._box_height_ratio(upper_boundary, lower_boundary)
+        height_ratio = self._box_height_ratio(upper_boundary, lower_boundary)
         return (
             height_ratio is not None
-            and MIN_BOX_HEIGHT_RATIO <= height_ratio <= MAX_BOX_HEIGHT_RATIO
+            and self.min_box_height_ratio <= height_ratio <= self.max_box_height_ratio
         )
 
-    @classmethod
     def _box_height_ratio(
-        cls,
+        self,
         upper_boundary: BoundaryLine,
         lower_boundary: BoundaryLine,
     ) -> float | None:
-        midpoint = (BOX_WINDOW - 1) / 2
+        midpoint = (self.box_window_size - 1) / 2
         upper_value = upper_boundary.value_at(midpoint)
         lower_value = lower_boundary.value_at(midpoint)
         if lower_value <= 0 or upper_value <= lower_value:
             return None
         return (upper_value - lower_value) / lower_value
 
-    @classmethod
     def _is_recently_inside_box(
-        cls,
+        self,
         closes: list[float],
         upper_boundary: BoundaryLine,
         lower_boundary: BoundaryLine,
     ) -> bool:
-        recent_inside_count, latest_inside = cls._recent_inside_summary(
+        recent_inside_count, latest_inside = self._recent_inside_summary(
             closes,
             upper_boundary,
             lower_boundary,
         )
-        return latest_inside or recent_inside_count >= MIN_RECENT_INSIDE_COUNT
+        return latest_inside or recent_inside_count >= self.min_recent_inside_count
 
-    @classmethod
     def _recent_inside_summary(
-        cls,
+        self,
         closes: list[float],
         upper_boundary: BoundaryLine,
         lower_boundary: BoundaryLine,
     ) -> tuple[int, bool]:
-        if len(closes) < INPUT_WINDOW:
+        if len(closes) < self.input_window_size:
             return 0, False
 
         recent_inside_count = 0
-        for offset in range(RECENT_WINDOW):
-            raw_index = len(closes) - RECENT_WINDOW + offset
-            boundary_index = raw_index - (SMOOTHING_WINDOW - 1)
+        for offset in range(self.recent_window):
+            raw_index = len(closes) - self.recent_window + offset
+            boundary_index = raw_index - (self.box_window_size - 1)
             lower_value = lower_boundary.value_at(boundary_index)
             upper_value = upper_boundary.value_at(boundary_index)
             if lower_value <= closes[raw_index] <= upper_value:
                 recent_inside_count += 1
 
-        latest_boundary_index = len(closes) - 1 - (SMOOTHING_WINDOW - 1)
+        latest_boundary_index = len(closes) - 1 - (self.smoothing_window_size - 1)
         latest_lower = lower_boundary.value_at(latest_boundary_index)
         latest_upper = upper_boundary.value_at(latest_boundary_index)
         latest_inside = latest_lower <= closes[-1] <= latest_upper
