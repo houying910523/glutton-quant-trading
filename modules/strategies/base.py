@@ -1,26 +1,22 @@
 from abc import abstractmethod
 from typing import Protocol
 
-from modules.core.context import StockDailyData
-from modules.strategies.models import StrategyMeta, Signal
+from modules.backtest.models import PortfolioState
+from modules.core.context import Context
+from modules.strategies.models import StrategyDecision, StrategyMeta
 
 
 class BaseStrategy(Protocol):
+    """策略核心接口，适合回测 / 模拟盘 / 实盘共用同一套决策逻辑。"""
+
     def __init__(self, meta: StrategyMeta):
-        self.meta: StrategyMeta = meta
-        # 运行时状态
-        self.signals: list[Signal] = []  # 本次产生的信号
+        self.meta = meta
 
     @abstractmethod
-    def on_init(self):
-        """策略初始化，引擎启动时调用一次"""
+    def decide(
+        self,
+        context: Context,
+        portfolio_state: "PortfolioState",
+    ) -> StrategyDecision:
+        """基于当前可见数据与真实组合状态，输出目标仓位建议。"""
         pass
-
-    @abstractmethod
-    def on_bar(self, bar: StockDailyData):
-        """K线到达回调，核心逻辑，产生Signal放到self.signals"""
-        pass
-
-    def get_signals(self) -> list[Signal]:
-        """引擎获取策略产生的信号"""
-        return self.signals

@@ -2,11 +2,12 @@ from __future__ import annotations
 
 import polars as pl
 
+from modules.backtest.models import PortfolioState
 from modules.core import Factor
-from modules.core.context import Context, StockDailyData
+from modules.core.context import Context
 from modules.strategies.base import BaseStrategy
 from modules.strategies.factor_processor import FactorProcessor
-from modules.strategies.models import Signal, StrategyMeta
+from modules.strategies.models import StrategyDecision, StrategyMeta, TargetPosition
 
 
 class FactorScoreStrategy(BaseStrategy):
@@ -18,24 +19,17 @@ class FactorScoreStrategy(BaseStrategy):
         top_n_pct: float = 0.2,
     ) -> None:
         self.meta = meta
-        self.signals: list[Signal] = []
-        self.positions: dict[str, float] = {}
         self.factors: list[Factor] = factors
         self.factor_weights = factor_weights
         self.top_n_pct = top_n_pct
         self.processor = FactorProcessor()
 
-    def on_init(self) -> None:
-        print(
-            f"多因子策略 [{self.meta.name}] 初始化完成，因子列表：{[f.name for f in self.factors]}"
-        )
-
-    def on_bar(self, bar: StockDailyData | Context) -> None:
-        if not isinstance(bar, Context):
-            raise TypeError("FactorScoreStrategy.on_bar expects a Context instance")
-
-        context = bar
-        self.signals = []
+    def decide(
+        self,
+        context: Context,
+        portfolio_state: PortfolioState,
+    ) -> StrategyDecision:
+        _ = portfolio_state
 
         symbols = list(context.stocks.keys())
         if not symbols:
@@ -74,32 +68,23 @@ class FactorScoreStrategy(BaseStrategy):
                 selected_symbols = selected.get_column("instrument_id").to_list()
 
         target_weight = 1.0 / len(selected_symbols) if selected_symbols else 0.0
-        target_positions = {symbol: target_weight for symbol in selected_symbols}
-
-        all_symbols = set(self.positions.keys()) | set(target_positions.keys())
-        for symbol in sorted(all_symbols):
-            old_weight = self.positions.get(symbol, 0.0)
-            new_weight = target_positions.get(symbol, 0.0)
-            if abs(new_weight - old_weight) < 1e-6:
-                continue
-
-            if new_weight > old_weight:
-                signal = Signal(
-                    symbol=symbol,
-                    direction="long",
-                    signal_type="open",
-                    reason=f"factor_buy target_weight={new_weight:.6f}",
-                )
-            else:
-                signal = Signal(
-                    symbol=symbol,
-                    direction="flat",
-                    signal_type="close",
-                    reason=f"factor_sell target_weight={new_weight:.6f}",
-                )
-            self.signals.append(signal)
-
-        self.positions = target_positions
+        targets = [
+            TargetPosition(
+                instrument_id=symbol,
+                target_weight=target_weight,
+                reason=f"factor_score target_weight={target_weight:.6f}",
+            )
+            for symbol in sorted(selected_symbols)
+        ]
+        return StrategyDecision(
+            as_of_date=context.end_date,
+            targets=targets,
+            close_missing_positions=True,
+            metadata={
+                "selected_count": len(targets),
+                "scored_count": int(df.height),
+            },
+        )
 
     @staticmethod
     def _factor_id(factor: Factor) -> str:

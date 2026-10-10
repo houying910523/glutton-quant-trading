@@ -1,4 +1,5 @@
 from dataclasses import dataclass, field
+from typing import Any
 
 
 @dataclass(frozen=True)
@@ -11,13 +12,20 @@ class StrategyMeta:
     inputs: list[str] = field(default_factory=list)
 
 
-@dataclass
-class Signal:
-    """交易信号，策略输出，引擎负责下单"""
+@dataclass(frozen=True)
+class TargetPosition:
+    """决策式策略输出的目标仓位。"""
 
-    symbol: str
-    direction: str  # long / short / flat
-    signal_type: str  # open / close
-    price: float | None = None
-    volume: int | None = None
+    instrument_id: str
+    target_weight: float
     reason: str = ""
+
+
+@dataclass(frozen=True)
+class StrategyDecision:
+    """决策式策略输出。"""
+
+    as_of_date: str
+    targets: list[TargetPosition] = field(default_factory=list)
+    close_missing_positions: bool = True
+    metadata: dict[str, Any] = field(default_factory=dict)

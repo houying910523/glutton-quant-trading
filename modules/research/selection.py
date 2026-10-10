@@ -2,12 +2,9 @@ from datetime import timedelta
 
 import polars as pl
 
-from modules.app import App
-from modules.filters import Filter
 from modules.core.context import StockDailyData
 from modules.datasource.service.stock_daily_service import StockDailyService
-from modules.filters.box_consolidation import BoxConsolidationFilter
-from modules.filters.main_board import MainBoardFilter
+from modules.filters import Filter
 from modules.repositories.database import SQLiteDatabase
 from modules.utils.time_util import now_shanghai
 
@@ -55,19 +52,3 @@ class Selection:
             )
             for group in grouped_data
         ]
-
-
-if __name__ == "__main__":
-    app = App()
-    database = app.database
-    filters = [
-        MainBoardFilter(),
-        # TurnoverFilter(),
-        BoxConsolidationFilter(),
-    ]
-    selection = Selection(database)
-    data = selection.run(filters, optional=False)
-    for item in data:
-        print(item.instrument_id)
-
-    print(f"Total stocks: {len(data)}")
