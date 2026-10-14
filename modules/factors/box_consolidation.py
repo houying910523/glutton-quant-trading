@@ -60,7 +60,6 @@ class BoxConsolidationMatchFactor(Factor):
     name = "box_consolidation_match"
     version = "v1"
     value_type = "bool"
-    output_column = "box_consolidation_match"
     params_schema = [
         ParamsProperty(
             name="box_window_size",
@@ -118,8 +117,9 @@ class BoxConsolidationMatchFactor(Factor):
         ),
     ]
 
-    def __init__(self, params: Mapping[str, Any]) -> None:
+    def __init__(self, params: Mapping[str, Any] | None = None) -> None:
         super().__init__(params)
+        params = self.params
         self.box_window_size = params.get("box_window_size", BOX_WINDOW)
         self.smoothing_window_size = params.get(
             "smoothing_window_size", SMOOTHING_WINDOW
@@ -179,7 +179,7 @@ class BoxConsolidationMatchFactor(Factor):
                     dtype=pl.Utf8,
                 ),
                 "trade_date": frame["trade_date"],
-                self.output_column: pl.Series(
+                "factor_value": pl.Series(
                     factor_values,
                     dtype=pl.Boolean,
                 ),

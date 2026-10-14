@@ -44,3 +44,20 @@ class TradingCalendarRepository(SQLiteRepository):
             (start_date, end_date),
         ).fetchall()
         return [row["trade_date"] for row in rows]
+
+    def list_recent_open_trade_dates(self, *, end_date: str, limit: int) -> list[str]:
+        if limit <= 0:
+            return []
+        rows = self._connection.execute(
+            """
+            SELECT trade_date
+            FROM trading_calendar
+            WHERE market = 'CN'
+              AND is_open = 1
+              AND trade_date <= ?
+            ORDER BY trade_date DESC
+            LIMIT ?
+            """,
+            (end_date, limit),
+        ).fetchall()
+        return [row["trade_date"] for row in reversed(rows)]

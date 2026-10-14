@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from uuid import uuid4
 
 from modules.utils.time_util import format_timestamp
 from modules.repositories.base import SQLiteRepository
@@ -119,11 +120,7 @@ class BatchRepository(SQLiteRepository):
 
     def _next_batch_key(self, resource_type: str, batch_date: str) -> str:
         prefix = f"{resource_type}_{batch_date}_"
-        count = self._connection.execute(
-            "SELECT COUNT(*) FROM ingestion_batch WHERE batch_key LIKE ?",
-            (f"{prefix}%",),
-        ).fetchone()[0]
-        return f"{prefix}{count + 1:03d}"
+        return f"{prefix}{uuid4().hex[:8]}"
 
     def _retry_count(self, record: IngestionBatchRecord) -> int:
         count = self._connection.execute(

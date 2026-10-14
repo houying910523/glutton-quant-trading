@@ -52,7 +52,7 @@ class StockController:
     def optional(self, request: StockOptionalRequest) -> bool:
         stock_id = request.stock_id
         action = request.action
-        with RepositorySession(self.database) as session:
+        with RepositorySession(self.database, transactional=True) as session:
             stock_info = session.stock_info.get(stock_id)
             if stock_info is None:
                 return False

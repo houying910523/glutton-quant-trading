@@ -198,4 +198,3 @@ class StockInfoRepository(SQLiteRepository):
             """,
             (optional, stock_id),
         )
-        self._connection.commit()

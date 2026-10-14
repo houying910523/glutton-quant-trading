@@ -23,6 +23,9 @@ class ExampleFilter:
         )
     ]
 
+    def __init__(self, params: dict | None = None) -> None:
+        self.params = dict(params or {})
+
     def dependencies(self) -> list[str]:
         return []
 
@@ -36,6 +39,9 @@ class SecondaryFilter:
     name = "secondary"
     params = {}
     params_schema = []
+
+    def __init__(self, params: dict | None = None) -> None:
+        self.params = dict(params or {})
 
     def dependencies(self) -> list[str]:
         return []
@@ -72,8 +78,8 @@ class CreateFilterTest(unittest.TestCase):
             filters,
             [
                 FilterMeta(
+                    label="example",
                     name="example",
-                    module_name="example",
                     description="Example filter description.",
                     params_schema=[
                         ParamsProperty(
@@ -84,8 +90,8 @@ class CreateFilterTest(unittest.TestCase):
                     ],
                 ),
                 FilterMeta(
+                    label="secondary",
                     name="secondary",
-                    module_name="secondary",
                     description="Secondary filter description.",
                     params_schema=[],
                 ),

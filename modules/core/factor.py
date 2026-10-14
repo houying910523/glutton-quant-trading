@@ -10,7 +10,6 @@ class Factor(ABC):
     name: str
     version: str
     value_type: str
-    output_column: str
     params_schema: list[ParamsProperty] = []
 
     def __init__(self, params: Mapping[str, Any] | None = None) -> None:

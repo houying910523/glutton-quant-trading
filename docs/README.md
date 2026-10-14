@@ -44,12 +44,12 @@
 - 指标定义管理、内置指标、Parquet 分区物化：`modules/indicators/`
 - 基于 DuckDB 的指标查询拼接：`modules/indicators/indicator_service.py`
 - 研究侧筛选链路：`Filter`、`Selection`、`main_board` / `turnover_rate` / `box_consolidation`
-- 多因子策略原型：`FactorScoreStrategy`
-- 回测最小闭环：`modules/backtest/models.py`、`scheduler.py`、`engine.py`、`analyzer.py`、`runner.py`
+- 策略原型：`BuyAndHoldStrategy`、`FactorScoreStrategy`
+- 回测最小闭环：`modules/backtest/models.py`、`scheduler.py`、`engine.py`、`market_data.py`、`order_builder.py`、`execution.py`、`valuation.py`、`trade_ledger.py`、`analyzer.py`、`runner.py`
 
 仍处于占位、半成品或待补齐阶段的主线是：
 
-- 回测层更完整的交易闭合、停牌处理、涨跌停细化等 A 股执行约束
+- 回测层更完整的交易闭合边界、停牌处理、涨跌停细化等 A 股执行约束
 - `factors` / `strategies` SQL 表对应的 repository 与服务层
 - 更完整的研究评估、标签、报告与回测结果模型
 - 实盘执行、订单、账户、风控与调度
@@ -57,5 +57,5 @@
 ## 当前结论
 
 - 当前最稳定的代码边界已经不只是“数据接入”，而是“数据接入 + 标准层 + 指标物化/查询 + 研究筛选原型”
-- 回测层已经补出输入输出模型、调仓日调度器、分析器、runner，以及 `BacktestEngine.run()` 的最小执行流：固定调仓、`strategy.decide()`、`next_open` 成交、收盘估值、净值曲线、订单/成交记录，并已加入 A 股 `T+1`、整手买入和一字涨跌停的保守约束
+- 回测层已经补出输入输出模型、调仓日调度器、分析器、runner、同步回测 API，以及 `BacktestEngine.run()` 的最小执行流：固定调仓、`strategy.decide()`、`next_open` 成交、收盘估值、净值曲线、订单/成交/基础闭合交易记录，并已加入 A 股 `T+1`、整手买入和普通沪深 A 股 10% 涨跌停的保守约束
 - 文档中凡是涉及表名、模块名、函数签名、已实现能力时，应以 `modules/` 与 `sql/` 的现状为准

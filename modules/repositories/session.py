@@ -14,6 +14,7 @@ class RepositorySession:
         self._connection: sqlite3.Connection | None = None
 
     def __enter__(self) -> "RepositorySession":
+        from modules.repositories.backtest_run_repository import BacktestRunRepository
         from modules.repositories.stock_daily_repository import StockDailyRepository
         from modules.repositories.indicator_repository import (
             IndicatorRepository,
@@ -27,6 +28,7 @@ class RepositorySession:
         connection = self._database.connect()
         if connection is None:
             raise Exception("连接数据库失败")
+        self.backtest_run = BacktestRunRepository(connection)
         self.batch = BatchRepository(connection)
         self.stock_daily = StockDailyRepository(connection)
         self.stock_info = StockInfoRepository(connection)

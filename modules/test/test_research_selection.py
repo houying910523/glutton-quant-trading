@@ -67,10 +67,11 @@ class SelectionRunTest(unittest.TestCase):
             )
         )
 
-        selection = Selection(database=object(), filters=[])
-        selection.run()
+        selection = Selection(database=object())
+        selection.run(filters=[])
 
         mock_stock_daily_service.return_value.load_stock_daily.assert_called_once_with(
             start_date=date(2024, 4, 30) - timedelta(days=LOOKBACK_DAYS),
             end_date=date(2024, 4, 30),
+            optional=False,
         )

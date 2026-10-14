@@ -47,7 +47,7 @@ class BoxConsolidationDiagnosticsTest(unittest.TestCase):
             97.0,
         ] * 3 + [100.0, 103.0, 106.0, 109.0, 112.0, 109.0, 106.0, 103.0]
 
-        result = BoxConsolidationMatchFactor.evaluate_closes(closes)
+        result = BoxConsolidationMatchFactor().evaluate_closes(closes)
 
         self.assertTrue(result.matched)
         self.assertIsNone(result.first_failure_reason)
@@ -61,7 +61,7 @@ class BoxConsolidationDiagnosticsTest(unittest.TestCase):
             for index in range(44)
         ]
 
-        result = BoxConsolidationMatchFactor.evaluate_closes(closes)
+        result = BoxConsolidationMatchFactor().evaluate_closes(closes)
 
         self.assertFalse(result.matched)
         self.assertEqual(
@@ -91,7 +91,7 @@ class BoxConsolidationDiagnosticsTest(unittest.TestCase):
             + [116.0, 118.0, 120.0]
         )
 
-        result = BoxConsolidationMatchFactor.evaluate_closes(closes)
+        result = BoxConsolidationMatchFactor().evaluate_closes(closes)
 
         self.assertFalse(result.matched)
         self.assertEqual(

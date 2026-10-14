@@ -7,6 +7,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 Severity = Literal["warn", "reject"]
 BatchStatus = Literal["pending", "running", "success", "failed"]
+BacktestRunStatus = Literal["pending", "running", "success", "failed"]
 Status = Literal["active", "deprecated", "disabled"]
 Category = Literal[
     "trend",
@@ -166,5 +167,22 @@ class FactorMetaRecord(BaseModel):
     frequency: str = "1d"
     params: dict[str, Any] = Field(default_factory=dict)
     status: Status = "active"
+    created_at: str
+    updated_at: str
+
+
+class BacktestRunRecord(BaseModel):
+    model_config = ConfigDict(extra="forbid")
+
+    id: int | None = None
+    strategy_id: str
+    strategy_params: dict[str, Any] = Field(default_factory=dict)
+    config: dict[str, Any]
+    status: BacktestRunStatus
+    started_at: str | None = None
+    finished_at: str | None = None
+    result_json: dict[str, Any] | None = None
+    analysis_json: dict[str, Any] | None = None
+    error_summary: str | None = None
     created_at: str
     updated_at: str
