@@ -6,6 +6,18 @@ from modules.repositories.base import SQLiteRepository
 
 
 class TradingCalendarRepository(SQLiteRepository):
+    def get_latest_trade_date(self) -> str | None:
+        row = self._connection.execute(
+            """
+            SELECT trade_date
+            FROM trading_calendar
+            WHERE market = 'CN'
+            ORDER BY trade_date DESC
+            LIMIT 1
+            """
+        ).fetchone()
+        return row["trade_date"] if row else None
+
     def upsert_many(self, records: list[TradingCalendarRecord]) -> None:
         payload = [
             (
